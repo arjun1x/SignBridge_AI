@@ -1,0 +1,17 @@
+{
+  "name": "signbridge-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bidirectional real-time accessibility layer for video calls: ASL sign recognition -> speech, and speech -> live caption overlay.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev -w apps/desktop",
+    "build": "npm run build -w apps/desktop",
+    "download:stt": "node scripts/download-stt-model.mjs"
+  }
+}

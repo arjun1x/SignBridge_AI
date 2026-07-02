@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "description": "Train/runtime contract for sign-recognition features. features.py (training) and features.ts (runtime) must implement this identically; a shared fixture test asserts max abs diff < 1e-6.",
+  "source_topology": {
+    "note": "Indices refer to legacy MediaPipe Holistic ordering used by the Kaggle GISLR data: face 468 pts, pose 33 pts, left hand 21 pts, right hand 21 pts. At runtime, slice face to [:468] before indexing (Tasks-API face mesh may emit 478).",
+    "face_points": 468,
+    "pose_points": 33,
+    "hand_points": 21
+  },
+  "landmark_subset": {
+    "left_hand": "all",
+    "right_hand": "all",
+    "pose": [0, 11, 12, 13, 14, 15, 16, 23, 24],
+    "lips": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 185, 40, 39, 37, 0, 267, 269, 270, 409, 415, 310, 311, 312, 13, 82, 81, 42, 183, 78]
+  },
+  "feature_order": ["left_hand", "right_hand", "pose", "lips"],
+  "coordinates": ["x", "y"],
+  "normalization": {
+    "translate": "subtract midpoint of pose landmarks 11 and 12 (shoulders); fallback: pose landmark 0 (nose) if both shoulders missing",
+    "scale": "divide by euclidean distance between pose landmarks 11 and 12; fallback: 1.0 if missing",
+    "missing": "NaN or undetected landmarks become 0.0 AFTER normalization",
+    "presence_flags": "append two floats: left_hand_present (0/1), right_hand_present (0/1)"
+  },
+  "frame_feature_dim": 184,
+  "window": {
+    "frames": 64,
+    "inference_stride_frames": 8,
+    "pad_mode": "zero-pad start, mask-aware model"
+  },
+  "mirror_augmentation": {
+    "note": "Horizontal mirror must swap left/right hand blocks and pose L/R pairs (11<->12, 13<->14, 15<->16, 23<->24) and negate x after centering."
+  }
+}

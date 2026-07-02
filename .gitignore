@@ -1,0 +1,26 @@
+# Node
+node_modules/
+out/
+dist/
+*.log
+
+# Electron
+apps/desktop/resources/stt/
+apps/desktop/resources/tts/
+apps/desktop/resources/mediapipe/
+
+# ML
+ml/.venv/
+ml/data/
+ml/checkpoints/
+ml/wandb/
+__pycache__/
+*.pyc
+
+# Model artifacts (tracked via releases, not git)
+models/*.onnx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
