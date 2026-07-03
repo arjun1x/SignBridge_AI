@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   backspaceGloss,
   clearGlossBuffer,
+  ModelInfo,
   setAutoSpeak,
   SignPipelineStatus,
   speakNow,
   startSignPipeline,
   stopSignPipeline
 } from '../vision/signPipeline'
-import { DEFAULT_DEBOUNCE } from '../inference/debounce'
 import { speak } from '../tts/ttsService'
 
 interface Prediction {
@@ -17,25 +17,19 @@ interface Prediction {
   ts: number
 }
 
-// Loose thresholds for exercising the pipeline against the untrained
-// placeholder model, whose top-1 probability hovers near 1/250 — the real
-// thresholds would (correctly) never fire on it.
-const TEST_MODE_DEBOUNCE = { minProb: 0.004, minConsecutive: 2 }
-
-// Week 2/3 scaffolding: exercises webcam -> landmarks -> ONNX worker ->
-// debounce -> sentence assembly -> TTS against a randomly-initialized
-// placeholder model (see ml/signbridge_ml/make_dummy_model.py), so glosses
-// are garbage until a real GISLR-trained model is exported and synced in.
+// Direction 1 practice panel: webcam -> landmarks -> ONNX worker -> debounce
+// -> sentence assembly -> TTS. The pipeline auto-selects the real trained
+// model (signs_v1) when it's been synced in, else the untrained placeholder
+// with loosened thresholds (glosses are garbage in that mode).
 export function SignPractice() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [running, setRunning] = useState(false)
-  const [modelReady, setModelReady] = useState(false)
+  const [model, setModel] = useState<ModelInfo | null>(null)
   const [status, setStatus] = useState<SignPipelineStatus | null>(null)
   const [prediction, setPrediction] = useState<Prediction | null>(null)
   const [glossBuffer, setGlossBuffer] = useState<string[]>([])
   const [spoken, setSpoken] = useState<string[]>([])
   const [autoSpeakOn, setAutoSpeakOn] = useState(true)
-  const [testMode, setTestMode] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => stopSignPipeline, [])
@@ -43,12 +37,12 @@ export function SignPractice() {
   const start = useCallback(async () => {
     if (!videoRef.current) return
     setError(null)
-    setModelReady(false)
+    setModel(null)
     setSpoken([])
     await startSignPipeline(
       videoRef.current,
       {
-        onReady: () => setModelReady(true),
+        onReady: setModel,
         onStatus: setStatus,
         onPrediction: setPrediction,
         onGlossBuffer: setGlossBuffer,
@@ -58,18 +52,15 @@ export function SignPractice() {
         },
         onError: (message) => setError(message)
       },
-      {
-        debounce: testMode ? TEST_MODE_DEBOUNCE : DEFAULT_DEBOUNCE,
-        autoSpeak: autoSpeakOn
-      }
+      { autoSpeak: autoSpeakOn }
     )
     setRunning(true)
-  }, [testMode, autoSpeakOn])
+  }, [autoSpeakOn])
 
   const stop = useCallback(() => {
     stopSignPipeline()
     setRunning(false)
-    setModelReady(false)
+    setModel(null)
     setStatus(null)
     setPrediction(null)
     setGlossBuffer([])
@@ -82,10 +73,9 @@ export function SignPractice() {
 
   return (
     <section className="card">
-      <h2>Sign practice (placeholder model)</h2>
+      <h2>Sign practice</h2>
       <p className="muted">
-        Webcam -&gt; landmarks -&gt; recognition -&gt; glosses -&gt; spoken sentence. Untrained
-        placeholder model — glosses are not meaningful yet.
+        Webcam -&gt; landmarks -&gt; recognition -&gt; glosses -&gt; spoken sentence.
       </p>
       {error && <p className="warn">{error}</p>}
 
@@ -116,8 +106,16 @@ export function SignPractice() {
                 </button>
               </>
             )}
-            {running && (
-              <span className="pill pill-off">{modelReady ? 'model loaded' : 'loading model...'}</span>
+            {running && !model && <span className="pill pill-off">loading model...</span>}
+            {running && model && (
+              <span
+                className={`pill ${model.testMode ? 'pill-off' : 'pill-on'}`}
+                title={model.testMode ? 'Untrained placeholder with loosened thresholds — glosses are garbage' : undefined}
+              >
+                {model.name}
+                {model.valAcc !== null && ` (val ${(model.valAcc * 100).toFixed(0)}%)`}
+                {model.testMode && ' — test mode'}
+              </span>
             )}
           </div>
 
@@ -129,15 +127,6 @@ export function SignPractice() {
                 onChange={(e) => toggleAutoSpeak(e.target.checked)}
               />{' '}
               auto-speak on rest
-            </label>
-            <label className="muted small" title="Loosens thresholds so the untrained model still produces glosses">
-              <input
-                type="checkbox"
-                checked={testMode}
-                disabled={running}
-                onChange={(e) => setTestMode(e.target.checked)}
-              />{' '}
-              test mode
             </label>
           </div>
 
