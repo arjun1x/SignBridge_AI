@@ -1,0 +1,10 @@
+{
+  "onnx_file": "signs_dummy.onnx",
+  "feature_spec_sha256": "260c1e0a658a613ce7a4e26b0457bc41210c0aa8d118081ef5571f97d49404bc",
+  "labels_sha256": "240354f6bba377770fd2f77a3f4b09af5a2369220c8635347ff9d7bc8879a1af",
+  "num_classes": 250,
+  "window_frames": 64,
+  "feature_dim": 184,
+  "val_acc": null,
+  "onnx_pytorch_max_diff": 8.344650268554688e-07
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCapturing, listenForPcmPort, startCapture, stopCapture } from '../capture/audioCapture'
+import { SignPractice } from './SignPractice'
 
 interface Line {
   text: string
@@ -95,6 +96,8 @@ export function App() {
           )}
         </div>
       </section>
+
+      <SignPractice />
 
       <section className="card grow">
         <h2>Transcript</h2>

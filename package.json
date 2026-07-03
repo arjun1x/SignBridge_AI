@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "npm run dev -w apps/desktop",
     "build": "npm run build -w apps/desktop",
-    "download:stt": "node scripts/download-stt-model.mjs"
+    "download:stt": "node scripts/download-stt-model.mjs",
+    "download:mediapipe": "node scripts/download-mediapipe-model.mjs",
+    "postinstall": "node scripts/copy-ort-assets.mjs"
   }
 }

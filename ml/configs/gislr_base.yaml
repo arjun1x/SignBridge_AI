@@ -1,0 +1,34 @@
+seed: 0
+
+data:
+  processed_dir: data/processed
+  window_frames: 64 # must match shared/feature_spec.json window.frames
+  feature_dim: 184 # must match shared/feature_spec.json frame_feature_dim
+
+model:
+  d_model: 192
+  n_heads: 4
+  n_layers: 3
+  ffn_dim: 384
+  dropout: 0.1
+  conv_kernel: 5
+
+train:
+  batch_size: 256
+  epochs: 80
+  lr: 3.0e-4
+  weight_decay: 0.05
+  label_smoothing: 0.1
+  warmup_epochs: 5
+  grad_clip: 1.0
+  num_workers: 6
+  amp_dtype: bfloat16 # RTX 5060 (Blackwell) supports bf16 natively
+
+augment:
+  mirror_prob: 0.5
+  affine_jitter_std: 0.01
+  landmark_noise_std: 0.005
+  hand_dropout_prob: 0.05
+
+output:
+  checkpoint_dir: checkpoints/gislr_base

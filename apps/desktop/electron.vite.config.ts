@@ -34,6 +34,14 @@ export default defineConfig({
   renderer: {
     root: 'src',
     plugins: [react()],
+    // onnxruntime-web's wasm backend dynamically import()s its emscripten glue
+    // .mjs at runtime using a path built from env.wasm.wasmPaths. Vite's dep
+    // pre-bundler rewrites dynamic imports inside optimized deps, which
+    // breaks that runtime-computed path (404/500 with a `?import` suffix
+    // appended) — excluding it from pre-bundling keeps the import untouched.
+    optimizeDeps: {
+      exclude: ['onnxruntime-web']
+    },
     server: {
       headers: isolationHeaders
     },

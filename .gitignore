@@ -7,7 +7,9 @@ dist/
 # Electron
 apps/desktop/resources/stt/
 apps/desktop/resources/tts/
-apps/desktop/resources/mediapipe/
+apps/desktop/src/public/ort/
+apps/desktop/src/public/mediapipe/
+apps/desktop/src/public/models/
 
 # ML
 ml/.venv/
@@ -19,6 +21,10 @@ __pycache__/
 
 # Model artifacts (tracked via releases, not git)
 models/*.onnx
+
+# Generated from Kaggle's sign_to_prediction_index_map.json by preprocess.py
+# (or a placeholder from make_dummy_model.py until real data is processed)
+shared/labels_gislr.json
 
 # OS / editor
 .DS_Store
