@@ -7,6 +7,15 @@
 let pcmPort: MessagePort | null = null
 let ctx: AudioContext | null = null
 let mediaStream: MediaStream | null = null
+let pcmMuted = false
+
+// Echo guard: while our own TTS speaks, loopback audio would contain the
+// synthesized voice and the captions would transcribe SignBridge itself.
+// Muting just skips posting PCM to the STT process; the resulting gap also
+// makes its endpoint detector finalize any pending caption, which is fine.
+export function setPcmMuted(muted: boolean): void {
+  pcmMuted = muted
+}
 
 // Dev diagnostics, readable from the console as window.__sbDebug.
 const debugState = {
@@ -84,6 +93,7 @@ export async function startCapture(): Promise<void> {
     }
     debugState.chunksSent++
     debugState.ctxState = ctx?.state ?? 'none'
+    if (pcmMuted) return
     try {
       // Structured clone, no transfer list: ArrayBuffer transfer across
       // Electron's remoted renderer↔utility MessagePort delivers `undefined`.

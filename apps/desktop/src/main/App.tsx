@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isCapturing, listenForPcmPort, startCapture, stopCapture } from '../capture/audioCapture'
+import { isCapturing, listenForPcmPort, setPcmMuted, startCapture, stopCapture } from '../capture/audioCapture'
+import { onSpeakingChange } from '../tts/ttsService'
 import { SignPractice } from './SignPractice'
 
 interface Line {
@@ -18,12 +19,14 @@ export function App() {
 
   useEffect(() => {
     listenForPcmPort()
+    // Echo guard: don't caption our own synthesized voice while TTS speaks.
+    const unsubscribeTts = onSpeakingChange((speaking) => setPcmMuted(speaking))
     window.signbridge.getStatus().then((s) => {
       setModelFound(s.modelFound)
       setModelDir(s.modelDir)
       setRunning(s.running)
     })
-    return window.signbridge.onCaption((ev) => {
+    const unsubscribeCaptions = window.signbridge.onCaption((ev) => {
       if (ev.kind === 'partial') setPartial(ev.text ?? '')
       if (ev.kind === 'final') {
         setPartial('')
@@ -32,6 +35,10 @@ export function App() {
       if (ev.kind === 'error') setError(ev.text ?? 'Unknown STT error')
       if (ev.kind === 'state' && ev.running === false) setRunning(false)
     })
+    return () => {
+      unsubscribeTts()
+      unsubscribeCaptions()
+    }
   }, [])
 
   useEffect(() => {
