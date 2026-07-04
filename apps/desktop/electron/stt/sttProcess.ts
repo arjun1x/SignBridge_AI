@@ -138,10 +138,25 @@ function generateTts(id: number, text: string, speed: number): void {
     // normal V8 buffer or generate() throws "External buffers are not
     // allowed". (No transfer list on the post — see the week-1 port lesson.)
     const audio = tts.generate({ text, sid: 0, speed, enableExternalBuffer: false })
+
+    // Peak-normalize to 0.89: Piper voices synthesize around ~0.5 peak, which
+    // arrives noticeably quiet on the far side of a call after the virtual
+    // cable + Discord's processing.
+    const samples: Float32Array = audio.samples
+    let peak = 0
+    for (let i = 0; i < samples.length; i++) {
+      const a = Math.abs(samples[i])
+      if (a > peak) peak = a
+    }
+    if (peak > 1e-4) {
+      const gain = 0.89 / peak
+      for (let i = 0; i < samples.length; i++) samples[i] *= gain
+    }
+
     process.parentPort.postMessage({
       kind: 'tts-result',
       id,
-      samples: audio.samples,
+      samples,
       sampleRate: audio.sampleRate,
       ts: Date.now()
     })
