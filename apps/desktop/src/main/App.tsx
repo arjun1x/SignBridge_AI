@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCapturing, listenForPcmPort, setPcmMuted, startCapture, stopCapture } from '../capture/audioCapture'
-import { onSpeakingChange } from '../tts/ttsService'
+import { onSpeakingChange, refreshTtsEngine } from '../tts/ttsService'
+import { CallSetup } from './CallSetup'
 import { SignPractice } from './SignPractice'
 
 interface Line {
@@ -19,8 +20,13 @@ export function App() {
 
   useEffect(() => {
     listenForPcmPort()
-    // Echo guard: don't caption our own synthesized voice while TTS speaks.
-    const unsubscribeTts = onSpeakingChange((speaking) => setPcmMuted(speaking))
+    refreshTtsEngine()
+    // Echo guard: don't caption our own synthesized voice — but only when it
+    // plays on the default output. Routed to VB-Cable, the loopback capture
+    // never hears it, so captions can keep flowing during two-way use.
+    const unsubscribeTts = onSpeakingChange((speaking, onDefaultOutput) =>
+      setPcmMuted(speaking && onDefaultOutput)
+    )
     window.signbridge.getStatus().then((s) => {
       setModelFound(s.modelFound)
       setModelDir(s.modelDir)
@@ -105,6 +111,8 @@ export function App() {
       </section>
 
       <SignPractice />
+
+      <CallSetup />
 
       <section className="card grow">
         <h2>Transcript</h2>

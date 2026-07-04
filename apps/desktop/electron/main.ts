@@ -1,7 +1,7 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
 import { join } from 'path'
 import { Channels, CaptionEvent } from './ipc/channels'
-import { findSttModel, SttManager } from './stt/sttManager'
+import { findSttModel, findTtsModel, SttManager } from './stt/sttManager'
 import { createMainWindow } from './windows/mainWindow'
 import { createOverlayWindow } from './windows/overlayWindow'
 
@@ -35,6 +35,10 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow()
   overlayWindow = createOverlayWindow()
 
+  // Load the routable TTS voice (Piper via sherpa) if it's been downloaded.
+  const ttsModelDir = findTtsModel(resourcesDir)
+  if (ttsModelDir) stt.initTts(ttsModelDir)
+
   mainWindow.on('closed', () => {
     mainWindow = null
     overlayWindow?.close()
@@ -56,15 +60,30 @@ app.whenReady().then(() => {
         error: 'STT model not found. Run "npm run download:stt" from the repo root, then try again.'
       }
     }
-    stt.start(model)
+    stt.startStt(model)
     stt.connectPcm(event.sender)
     overlayWindow?.showInactive()
     return { ok: true }
   })
 
   ipcMain.handle(Channels.captionsStop, () => {
-    stt.stop()
+    stt.stopStt()
     return { ok: true }
+  })
+
+  ipcMain.handle('tts:status', () => ({
+    modelFound: findTtsModel(resourcesDir) !== null,
+    ready: stt.ttsAvailable
+  }))
+
+  ipcMain.handle('tts:speak', async (_event, text: string, speed?: number) => {
+    let audio
+    try {
+      audio = await stt.speak(text, speed)
+    } catch (err) {
+      throw new Error(`SPEAK-REJECTED: ${String(err)}`)
+    }
+    return { samples: audio.samples, sampleRate: audio.sampleRate }
   })
 
   ipcMain.on(Channels.overlaySetInteractive, (_event, interactive: boolean) => {
@@ -73,6 +92,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  stt.stop()
+  stt.shutdown()
   app.quit()
 })

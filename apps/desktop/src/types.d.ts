@@ -15,6 +15,8 @@ declare global {
       stopCaptions(): Promise<{ ok: boolean }>
       onCaption(cb: (ev: CaptionEvent) => void): () => void
       setOverlayInteractive(interactive: boolean): void
+      ttsStatus(): Promise<{ modelFound: boolean; ready: boolean }>
+      ttsSpeak(text: string, speed?: number): Promise<{ samples: Float32Array; sampleRate: number }>
     }
   }
 }

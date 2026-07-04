@@ -144,6 +144,32 @@ button.secondary {
   font-size: 13px;
 }
 
+select {
+  background: #262a31;
+  color: #e8eaed;
+  border: 1px solid #363a41;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  max-width: 320px;
+}
+
+.level-meter {
+  display: inline-block;
+  width: 140px;
+  height: 10px;
+  background: #262a31;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.level-fill {
+  display: block;
+  height: 100%;
+  background: #52d381;
+  transition: width 0.1s linear;
+}
+
 code {
   background: #262a31;
   padding: 1px 6px;

@@ -10,7 +10,7 @@ export interface LetterCommitterConfig {
   stableFrames: number
 }
 
-export const DEFAULT_LETTER_CONFIG: LetterCommitterConfig = { minProb: 0.7, stableFrames: 8 }
+export const DEFAULT_LETTER_CONFIG: LetterCommitterConfig = { minProb: 0.65, stableFrames: 6 }
 
 export class LetterCommitter {
   private candidate: string | null = null

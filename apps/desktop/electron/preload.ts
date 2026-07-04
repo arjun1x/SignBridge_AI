@@ -24,7 +24,12 @@ const api = {
 
   setOverlayInteractive: (interactive: boolean): void => {
     ipcRenderer.send('overlay:set-interactive', interactive)
-  }
+  },
+
+  ttsStatus: (): Promise<{ modelFound: boolean; ready: boolean }> => ipcRenderer.invoke('tts:status'),
+
+  ttsSpeak: (text: string, speed?: number): Promise<{ samples: Float32Array; sampleRate: number }> =>
+    ipcRenderer.invoke('tts:speak', text, speed)
 }
 
 contextBridge.exposeInMainWorld('signbridge', api)
