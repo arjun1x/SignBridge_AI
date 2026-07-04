@@ -30,3 +30,4 @@ shared/labels_gislr.json
 .DS_Store
 Thumbs.db
 .vscode/
+apps/desktop/release/

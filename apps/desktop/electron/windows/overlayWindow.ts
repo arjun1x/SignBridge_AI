@@ -37,7 +37,8 @@ export function createOverlayWindow(): BrowserWindow {
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/overlay.html`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/overlay.html'))
+    // Served by the app:// protocol registered in main.ts (COOP/COEP headers).
+    win.loadURL('app://bundle/overlay.html')
   }
   return win
 }

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from 'electron'
+import { join, normalize } from 'path'
+import { pathToFileURL } from 'url'
 import { Channels, CaptionEvent } from './ipc/channels'
 import { findSttModel, findTtsModel, SttManager } from './stt/sttManager'
 import { createMainWindow } from './windows/mainWindow'
@@ -20,7 +21,36 @@ function broadcast(ev: CaptionEvent): void {
 
 const stt = new SttManager(broadcast)
 
+// Packaged builds serve the renderer over app:// instead of file:// so we can
+// attach COOP/COEP headers (cross-origin isolation -> SharedArrayBuffer ->
+// onnxruntime-web WASM threads) and so absolute asset paths (/models/...,
+// /ort/..., /mediapipe/...) resolve. Must be registered before app ready.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
+  }
+])
+
+function registerAppProtocol(): void {
+  const rendererRoot = join(__dirname, '../renderer')
+  protocol.handle('app', async (request) => {
+    const url = new URL(request.url)
+    const pathname = decodeURIComponent(url.pathname)
+    const target = normalize(join(rendererRoot, pathname === '/' ? '/index.html' : pathname))
+    if (!target.startsWith(rendererRoot)) {
+      return new Response('forbidden', { status: 403 })
+    }
+    const res = await net.fetch(pathToFileURL(target).toString())
+    const headers = new Headers(res.headers)
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
+    return new Response(res.body, { status: res.status, headers })
+  })
+}
+
 app.whenReady().then(() => {
+  if (app.isPackaged) registerAppProtocol()
   // Auto-approve getDisplayMedia with WASAPI loopback audio (all system audio).
   // The renderer immediately drops the video track — we only want the sound.
   session.defaultSession.setDisplayMediaRequestHandler(

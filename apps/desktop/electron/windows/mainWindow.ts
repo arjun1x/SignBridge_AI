@@ -16,7 +16,8 @@ export function createMainWindow(): BrowserWindow {
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/index.html`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
+    // Served by the app:// protocol registered in main.ts (COOP/COEP headers).
+    win.loadURL('app://bundle/index.html')
   }
   return win
 }

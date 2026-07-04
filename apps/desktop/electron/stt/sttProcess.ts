@@ -4,7 +4,7 @@
 // the UI. STT PCM arrives on a MessagePort wired directly from the renderer;
 // TTS requests/replies go through parentPort (main relays to the renderer).
 import { createRequire } from 'module'
-import { dirname, join } from 'path'
+import { dirname, join, sep } from 'path'
 import { existsSync } from 'fs'
 
 interface SttModelPaths {
@@ -28,9 +28,15 @@ let tts: any = null
 
 function loadSherpa(): any {
   // Windows: the sherpa-onnx DLLs live in the platform package; it must be on
-  // PATH before the addon loads or require() fails with a Win32 error.
+  // PATH before the addon loads or require() fails with a Win32 error. In a
+  // packaged build the path resolves inside app.asar, but Windows can only
+  // load DLLs from the real filesystem — electron-builder unpacks native
+  // modules to app.asar.unpacked, so point PATH there.
   try {
-    const platformPkg = dirname(nodeRequire.resolve('sherpa-onnx-win-x64/package.json'))
+    const platformPkg = dirname(nodeRequire.resolve('sherpa-onnx-win-x64/package.json')).replace(
+      'app.asar' + sep,
+      'app.asar.unpacked' + sep
+    )
     process.env.PATH = `${platformPkg};${process.env.PATH ?? ''}`
   } catch {
     // non-Windows or already resolvable
