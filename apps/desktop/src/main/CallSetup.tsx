@@ -65,8 +65,16 @@ export function CallSetup() {
     const cableOut = devices.find((d) => d.kind === 'audioinput' && d.label.includes(CABLE_OUTPUT_HINT))
     if (!cableOut) return
 
+    // Raw capture: default constraints enable echo cancellation, which
+    // treats our own browser-played TTS as echo and subtracts it — the
+    // meter would show silence exactly when the loop is working.
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: cableOut.deviceId } }
+      audio: {
+        deviceId: { exact: cableOut.deviceId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
     })
     const ctx = new AudioContext()
     const analyser = ctx.createAnalyser()
