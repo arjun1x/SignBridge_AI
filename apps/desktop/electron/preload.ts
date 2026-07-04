@@ -29,7 +29,18 @@ const api = {
   ttsStatus: (): Promise<{ modelFound: boolean; ready: boolean }> => ipcRenderer.invoke('tts:status'),
 
   ttsSpeak: (text: string, speed?: number): Promise<{ samples: Float32Array; sampleRate: number }> =>
-    ipcRenderer.invoke('tts:speak', text, speed)
+    ipcRenderer.invoke('tts:speak', text, speed),
+
+  authGet: (): Promise<{ name: string; email: string; avatar: string | null } | null> =>
+    ipcRenderer.invoke('auth:get'),
+
+  authSignIn: (): Promise<{
+    ok: boolean
+    profile?: { name: string; email: string; avatar: string | null }
+    error?: string
+  }> => ipcRenderer.invoke('auth:signIn'),
+
+  authSignOut: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('auth:signOut')
 }
 
 contextBridge.exposeInMainWorld('signbridge', api)

@@ -2,6 +2,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } 
 import { join, normalize } from 'path'
 import { pathToFileURL } from 'url'
 import { Channels, CaptionEvent } from './ipc/channels'
+import { getStoredProfile, loadOAuthConfig, signInWithGoogle, signOut } from './auth/googleAuth'
 import { findSttModel, findTtsModel, SttManager } from './stt/sttManager'
 import { createMainWindow } from './windows/mainWindow'
 import { createOverlayWindow } from './windows/overlayWindow'
@@ -118,6 +119,32 @@ app.whenReady().then(() => {
 
   ipcMain.on(Channels.overlaySetInteractive, (_event, interactive: boolean) => {
     overlayWindow?.setIgnoreMouseEvents(!interactive, { forward: true })
+  })
+
+  ipcMain.handle('auth:get', () => getStoredProfile())
+
+  ipcMain.handle('auth:signIn', async () => {
+    const config = loadOAuthConfig(resourcesDir)
+    if (!config) {
+      return {
+        ok: false,
+        error:
+          'Google sign-in is not configured. Create a (free) OAuth "Desktop app" client at ' +
+          'console.cloud.google.com → Credentials, then save resources/google-oauth.json with ' +
+          '{"clientId": "...", "clientSecret": "..."} and restart. Or continue as guest.'
+      }
+    }
+    try {
+      const profile = await signInWithGoogle(config)
+      return { ok: true, profile }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('auth:signOut', () => {
+    signOut()
+    return { ok: true }
   })
 })
 

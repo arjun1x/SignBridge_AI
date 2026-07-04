@@ -17,6 +17,15 @@ declare global {
       setOverlayInteractive(interactive: boolean): void
       ttsStatus(): Promise<{ modelFound: boolean; ready: boolean }>
       ttsSpeak(text: string, speed?: number): Promise<{ samples: Float32Array; sampleRate: number }>
+      authGet(): Promise<UserProfile | null>
+      authSignIn(): Promise<{ ok: boolean; profile?: UserProfile; error?: string }>
+      authSignOut(): Promise<{ ok: boolean }>
     }
+  }
+
+  interface UserProfile {
+    name: string
+    email: string
+    avatar: string | null
   }
 }

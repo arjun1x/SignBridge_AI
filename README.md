@@ -65,6 +65,13 @@ For call integration, install the free
 in-app **Call Integration** wizard (device pick, test voice, level meter).
 Set the call app's microphone to `CABLE Output`.
 
+**Google sign-in (optional):** the welcome screen offers "Continue with
+Google" (OAuth 2.0 PKCE via the system browser) purely for personalization —
+there is no backend, and guest mode is fully featured. To enable it, create
+a free OAuth client (type *Desktop app*) at Google Cloud Console →
+Credentials, and save `apps/desktop/resources/google-oauth.json`:
+`{"clientId": "...", "clientSecret": "..."}`.
+
 ## Honest limitations
 
 - **Gloss order ≠ English grammar.** Sentences are joined recognized

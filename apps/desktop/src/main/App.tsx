@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isCapturing, listenForPcmPort, setPcmMuted, startCapture, stopCapture } from '../capture/audioCapture'
+import { listenForPcmPort, setPcmMuted, startCapture, stopCapture } from '../capture/audioCapture'
 import { onSpeakingChange, refreshTtsEngine } from '../tts/ttsService'
 import { CallSetup } from './CallSetup'
+import { Logo } from './Logo'
+import { SignIn } from './SignIn'
 import { SignPractice } from './SignPractice'
 
 interface Line {
@@ -9,7 +11,10 @@ interface Line {
   ts: number
 }
 
+type AuthState = { checked: false } | { checked: true; profile: UserProfile | null; guest: boolean }
+
 export function App() {
+  const [auth, setAuth] = useState<AuthState>({ checked: false })
   const [modelFound, setModelFound] = useState<boolean | null>(null)
   const [modelDir, setModelDir] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -19,6 +24,9 @@ export function App() {
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    window.signbridge.authGet().then((profile) => {
+      setAuth({ checked: true, profile, guest: localStorage.getItem('signbridge.guest') === '1' })
+    })
     listenForPcmPort()
     refreshTtsEngine()
     // Echo guard: don't caption our own synthesized voice — but only when it
@@ -74,13 +82,45 @@ export function App() {
     setPartial('')
   }, [])
 
+  const signOut = useCallback(async () => {
+    await window.signbridge.authSignOut()
+    localStorage.removeItem('signbridge.guest')
+    setAuth({ checked: true, profile: null, guest: false })
+  }, [])
+
+  if (!auth.checked) return null
+  if (!auth.profile && !auth.guest) {
+    return (
+      <SignIn
+        onSignedIn={(profile) => setAuth({ checked: true, profile, guest: profile === null })}
+      />
+    )
+  }
+
+  const user = auth.profile
+
   return (
     <div className="app">
-      <header>
-        <h1>SignBridge AI</h1>
+      <header className="topbar">
+        <Logo className="logo" />
+        <h1>
+          Sign<span>Bridge</span>
+        </h1>
         <span className={`pill ${running ? 'pill-on' : 'pill-off'}`}>
-          {running ? 'captions live' : 'idle'}
+          {running ? 'captions live' : 'captions idle'}
         </span>
+        <div className="spacer" />
+        <div className="user-chip">
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" />
+          ) : (
+            <span className="avatar-fallback">{(user?.name ?? 'G')[0].toUpperCase()}</span>
+          )}
+          <span>{user?.name ?? 'Guest'}</span>
+          <button onClick={signOut} title={user ? 'Sign out' : 'Back to sign-in'}>
+            {user ? 'Sign out' : 'Sign in'}
+          </button>
+        </div>
       </header>
 
       <section className="card">

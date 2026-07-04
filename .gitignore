@@ -31,3 +31,6 @@ shared/labels_gislr.json
 Thumbs.db
 .vscode/
 apps/desktop/release/
+
+# Google OAuth client credentials (per-user, never committed)
+apps/desktop/resources/google-oauth.json
