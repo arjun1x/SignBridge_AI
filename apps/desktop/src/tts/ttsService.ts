@@ -15,13 +15,15 @@
 type SpeakingListener = (speaking: boolean, onDefaultOutput: boolean) => void
 
 const listeners = new Set<SpeakingListener>()
+const DEVICE_STORAGE_KEY = 'signbridge.ttsOutputDevice'
 let queueDepth = 0
 let speaking = false
-let outputDeviceId = 'default'
+let outputDeviceId = localStorage.getItem(DEVICE_STORAGE_KEY) ?? 'default'
 let piperReady = false
 
 export function setTtsOutputDevice(deviceId: string): void {
   outputDeviceId = deviceId
+  localStorage.setItem(DEVICE_STORAGE_KEY, deviceId)
 }
 
 export function getTtsOutputDevice(): string {
