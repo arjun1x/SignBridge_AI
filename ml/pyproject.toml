@@ -12,6 +12,7 @@ dependencies = [
     "tqdm>=4.66",
     "pyyaml>=6.0",
     "kaggle>=1.6",
+    "mediapipe>=0.10.35",
 ]
 
 [tool.uv.sources]

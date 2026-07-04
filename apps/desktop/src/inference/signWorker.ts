@@ -31,15 +31,23 @@ let ring = new Float32Array(WINDOW_FRAMES * FRAME_FEATURE_DIM) // start zero-pad
 let framesSeenTotal = 0
 let framesSinceLastInfer = 0
 
+// Fingerspelling: a second, tiny per-frame session (63-dim hand -> letter).
+let fsSession: ort.InferenceSession | null = null
+let fsLabels: string[] = []
+
 type WorkerMsg =
   | { type: 'load'; modelUrl: string; metaUrl: string; labelsUrl: string }
+  | { type: 'load-fs'; modelUrl: string; labelsUrl: string }
   | { type: 'frame'; features: Float32Array; hasHands: boolean }
+  | { type: 'hand'; features: Float32Array }
   | { type: 'reset' }
 
 type WorkerReply =
   | { type: 'ready' }
+  | { type: 'fs-ready' }
   | { type: 'error'; message: string }
   | { type: 'prediction'; gloss: string; prob: number; ts: number }
+  | { type: 'fs-prediction'; letter: string; prob: number; ts: number }
 
 function post(msg: WorkerReply): void {
   ;(self as unknown as Worker).postMessage(msg)
@@ -81,6 +89,31 @@ function softmaxAt(logits: Float32Array, index: number): number {
   return Math.exp(logits[index] - max) / sum
 }
 
+async function createSession(modelUrl: string): Promise<ort.InferenceSession> {
+  try {
+    return await ort.InferenceSession.create(modelUrl, { executionProviders: ['webgpu'] })
+  } catch (webgpuErr) {
+    try {
+      return await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] })
+    } catch (wasmErr) {
+      throw new Error(
+        `webgpu: ${(webgpuErr as Error)?.stack ?? webgpuErr}\n---\nwasm: ${(wasmErr as Error)?.stack ?? wasmErr}`
+      )
+    }
+  }
+}
+
+async function runFingerspell(features: Float32Array): Promise<void> {
+  if (!fsSession) return
+  const outputs = await fsSession.run({
+    features: new ort.Tensor('float32', features, [1, features.length])
+  })
+  const logits = outputs.logits.data as Float32Array
+  let best = 0
+  for (let i = 1; i < logits.length; i++) if (logits[i] > logits[best]) best = i
+  post({ type: 'fs-prediction', letter: fsLabels[best] ?? `#${best}`, prob: softmaxAt(logits, best), ts: Date.now() })
+}
+
 self.onmessage = async (e: MessageEvent<WorkerMsg>) => {
   const msg = e.data
   try {
@@ -93,19 +126,14 @@ self.onmessage = async (e: MessageEvent<WorkerMsg>) => {
         )
       }
       labels = await (await fetch(msg.labelsUrl)).json()
-
-      try {
-        session = await ort.InferenceSession.create(msg.modelUrl, { executionProviders: ['webgpu'] })
-      } catch (webgpuErr) {
-        try {
-          session = await ort.InferenceSession.create(msg.modelUrl, { executionProviders: ['wasm'] })
-        } catch (wasmErr) {
-          throw new Error(
-            `webgpu: ${(webgpuErr as Error)?.stack ?? webgpuErr}\n---\nwasm: ${(wasmErr as Error)?.stack ?? wasmErr}`
-          )
-        }
-      }
+      session = await createSession(msg.modelUrl)
       post({ type: 'ready' })
+    } else if (msg.type === 'load-fs') {
+      fsLabels = await (await fetch(msg.labelsUrl)).json()
+      fsSession = await createSession(msg.modelUrl)
+      post({ type: 'fs-ready' })
+    } else if (msg.type === 'hand') {
+      await runFingerspell(msg.features)
     } else if (msg.type === 'frame') {
       pushFrame(msg.features)
       if (msg.hasHands && framesSinceLastInfer >= STRIDE_FRAMES) {

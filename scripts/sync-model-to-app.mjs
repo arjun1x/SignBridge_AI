@@ -22,9 +22,13 @@ for (const ext of ['.onnx', '.meta.json']) {
   copyFileSync(src, join(outDir, `${name}${ext}`))
 }
 
-const labelsSrc = join(root, 'shared', 'labels_gislr.json')
-if (existsSync(labelsSrc)) {
-  copyFileSync(labelsSrc, join(outDir, 'labels.json'))
+const labelCopies = [
+  ['labels_gislr.json', 'labels.json'],
+  ['labels_fingerspell.json', 'labels_fingerspell.json']
+]
+for (const [src, dst] of labelCopies) {
+  const p = join(root, 'shared', src)
+  if (existsSync(p)) copyFileSync(p, join(outDir, dst))
 }
 
 console.log(`Synced ${name} -> ${outDir}`)

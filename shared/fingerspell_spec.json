@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Train/runtime contract for fingerspelling (static letter) features. fingerspell_features.py and fingerspellFeatures.ts must implement this identically; fixture-tested like feature_spec.json.",
+  "input": "21 hand landmarks (x, y, z) from MediaPipe hand output (Holistic or HandLandmarker)",
+  "normalization": {
+    "handedness": "canonicalize to RIGHT hand: if the active hand is the left hand, negate x of every landmark before further normalization",
+    "translate": "subtract wrist (landmark 0)",
+    "scale": "divide all coordinates by euclidean distance (x,y,z) from wrist (0) to middle-finger MCP (9); fallback 1.0 if < 1e-6",
+    "output": "flattened 63-dim float32 vector, landmark-major (x0,y0,z0,x1,...)"
+  },
+  "feature_dim": 63,
+  "classes": "A-Z plus 'space' and 'del' (28) — see shared/labels_fingerspell.json written by training"
+}

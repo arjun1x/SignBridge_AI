@@ -1,0 +1,8 @@
+{
+  "onnx_file": "fingerspell_v1.onnx",
+  "fingerspell_spec_sha256": "3bfefee2086ce5f8f8291fac2720a727b29147b0ff125ad30e92b71439de970a",
+  "num_classes": 28,
+  "feature_dim": 63,
+  "val_acc": 0.980018138885498,
+  "onnx_pytorch_max_diff": 6.67572021484375e-06
+}

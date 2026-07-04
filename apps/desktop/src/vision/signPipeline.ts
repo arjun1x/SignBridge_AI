@@ -1,14 +1,22 @@
 // Orchestrates the Direction-1 pipeline: webcam -> HolisticLandmarker ->
 // feature extraction -> motion gate -> sign-recognition worker -> gloss
-// debounce -> sentence assembly. Mirrors the style of
-// capture/audioCapture.ts (module-level state, explicit start/stop), not a
-// React hook, so it's easy to drive from tests/CDP too.
+// debounce -> sentence assembly. Two recognition modes share the webcam,
+// landmarker, worker, assembler and TTS chain:
+//   'signs'       — 250-word GISLR classifier over 64-frame windows
+//   'fingerspell' — per-frame letter classifier; letters build a word,
+//                   'space' commits it to the sentence buffer, 'del' erases
+// Mirrors the style of capture/audioCapture.ts (module-level state, explicit
+// start/stop), not a React hook, so it's easy to drive from tests/CDP too.
 import { closeLandmarker, detectFrame, initLandmarker } from './landmarker'
 import { extractFrameFeatures, FRAME_FEATURE_DIM } from './features'
+import { normalizeHand } from './fingerspellFeatures'
 import { SignGate } from '../inference/gating'
 import { DebounceConfig, DEFAULT_DEBOUNCE, GlossDebouncer } from '../inference/debounce'
+import { LetterCommitter } from '../inference/letterCommitter'
 import { SentenceAssembler } from '../nlp/sentenceAssembler'
 import SignWorker from '../inference/signWorker?worker'
+
+export type SignMode = 'signs' | 'fingerspell'
 
 export interface SignPipelineStatus {
   handsPresent: boolean
@@ -31,6 +39,8 @@ export interface SignPipelineCallbacks {
   onSentence?: (sentence: string) => void
   onError?: (message: string) => void
   onReady?: (model: ModelInfo) => void
+  /** Fingerspell mode: live letter prediction + the word being spelled. */
+  onFingerspell?: (s: { letter: string; prob: number; word: string; available: boolean }) => void
 }
 
 export interface SignPipelineOptions {
@@ -46,6 +56,16 @@ let debouncer: GlossDebouncer | null = null
 let assembler: SentenceAssembler | null = null
 let rafHandle: number | null = null
 let running = false
+
+let mode: SignMode = 'signs'
+let letterCommitter: LetterCommitter | null = null
+let fsAvailable = false
+let currentWord = ''
+let fsCallbacks: SignPipelineCallbacks | null = null
+
+function emitFingerspell(letter: string, prob: number): void {
+  fsCallbacks?.onFingerspell?.({ letter, prob, word: currentWord, available: fsAvailable })
+}
 
 // Preference order: the real trained model if it's been exported + synced
 // (scripts/sync-model-to-app.mjs signs_v1), else the untrained placeholder.
@@ -74,6 +94,9 @@ export async function startSignPipeline(
   if (running) return
   running = true
   gate = new SignGate()
+  letterCommitter = new LetterCommitter()
+  currentWord = ''
+  fsCallbacks = callbacks
 
   try {
     const model = await resolveModel()
@@ -96,10 +119,15 @@ export async function startSignPipeline(
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data
       if (msg.type === 'ready') callbacks.onReady?.({ name: model.name, valAcc: model.valAcc, testMode })
-      else if (msg.type === 'prediction') {
+      else if (msg.type === 'fs-ready') {
+        fsAvailable = true
+        emitFingerspell('', 0)
+      } else if (msg.type === 'prediction') {
         callbacks.onPrediction?.(msg)
         const gloss = debouncer?.push(msg)
         if (gloss) assembler?.addGloss(gloss)
+      } else if (msg.type === 'fs-prediction') {
+        handleLetterPrediction(msg.letter, msg.prob)
       } else if (msg.type === 'error') callbacks.onError?.(msg.message)
     }
     worker.postMessage({
@@ -108,6 +136,16 @@ export async function startSignPipeline(
       metaUrl: `${model.base}.meta.json`,
       labelsUrl: '/models/labels.json'
     })
+
+    // Fingerspell model is optional — load it if it's been trained + synced.
+    const fsMeta = await fetch('/models/fingerspell_v1.meta.json').catch(() => null)
+    if (fsMeta?.ok) {
+      worker.postMessage({
+        type: 'load-fs',
+        modelUrl: '/models/fingerspell_v1.onnx',
+        labelsUrl: '/models/labels_fingerspell.json'
+      })
+    }
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: { width: 640, height: 480 },
@@ -143,11 +181,26 @@ export async function startSignPipeline(
           const g = gate!.update(features, now)
           callbacks.onStatus?.({ ...g, fps })
           if (g.justEnteredRest) debouncer?.onRest()
+          if (g.justEnteredRest && mode === 'fingerspell') commitPendingWord()
           assembler?.updateRest(g.isResting, now)
-          // No transfer list: SignGate holds onto `features` as prevFeatures for
-          // next-frame motion diffing, and transferring would detach its buffer.
-          // The array is tiny (184 floats), so cloning costs nothing measurable.
-          worker?.postMessage({ type: 'frame', features, hasHands: g.handsPresent })
+
+          if (mode === 'signs') {
+            // No transfer list: SignGate holds onto `features` as prevFeatures
+            // for next-frame motion diffing, and transferring would detach its
+            // buffer. The array is tiny (184 floats), cloning costs nothing.
+            worker?.postMessage({ type: 'frame', features, hasHands: g.handsPresent })
+          } else if (fsAvailable) {
+            // Pick the active hand (right preferred), canonicalize, classify.
+            const rightPresent = !Number.isNaN(frame.rightHand[0])
+            const leftPresent = !Number.isNaN(frame.leftHand[0])
+            if (rightPresent || leftPresent) {
+              const hand = rightPresent ? frame.rightHand : frame.leftHand
+              const normalized = normalizeHand(hand, !rightPresent)
+              worker?.postMessage({ type: 'hand', features: normalized })
+            } else {
+              letterCommitter?.onHandLost()
+            }
+          }
         }
       } catch (err) {
         debug.lastLoopError = String(err)
@@ -171,7 +224,50 @@ export async function startSignPipeline(
   }
 }
 
+function handleLetterPrediction(letter: string, prob: number): void {
+  emitFingerspell(letter, prob)
+  const committed = letterCommitter?.push(letter, prob)
+  if (!committed) return
+
+  if (committed === 'space') {
+    commitPendingWord()
+  } else if (committed === 'del') {
+    if (currentWord.length > 0) currentWord = currentWord.slice(0, -1)
+    else assembler?.backspace()
+    emitFingerspell(letter, prob)
+  } else {
+    currentWord += committed.toLowerCase()
+    emitFingerspell(letter, prob)
+  }
+}
+
+function commitPendingWord(): void {
+  if (currentWord.length === 0) return
+  assembler?.addGloss(currentWord)
+  currentWord = ''
+  emitFingerspell('', 0)
+}
+
+export function setSignMode(newMode: SignMode): void {
+  if (newMode === mode) return
+  mode = newMode
+  letterCommitter?.reset()
+  debouncer?.reset()
+  currentWord = ''
+  worker?.postMessage({ type: 'reset' })
+  emitFingerspell('', 0)
+}
+
+export function getSignMode(): SignMode {
+  return mode
+}
+
+export function isFingerspellAvailable(): boolean {
+  return fsAvailable
+}
+
 export function speakNow(): void {
+  commitPendingWord()
   assembler?.speak()
 }
 
@@ -198,6 +294,11 @@ export function stopSignPipeline(): void {
   gate = null
   debouncer = null
   assembler = null
+  letterCommitter = null
+  fsCallbacks = null
+  fsAvailable = false
+  currentWord = ''
+  mode = 'signs'
   closeLandmarker()
 }
 

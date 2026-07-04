@@ -130,6 +130,20 @@ button.secondary {
   font-style: italic;
 }
 
+.partial {
+  color: #9aa0a6;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mode-toggle button {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
 code {
   background: #262a31;
   padding: 1px 6px;

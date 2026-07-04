@@ -4,6 +4,8 @@ import {
   clearGlossBuffer,
   ModelInfo,
   setAutoSpeak,
+  setSignMode,
+  SignMode,
   SignPipelineStatus,
   speakNow,
   startSignPipeline,
@@ -15,6 +17,13 @@ interface Prediction {
   gloss: string
   prob: number
   ts: number
+}
+
+interface FingerspellState {
+  letter: string
+  prob: number
+  word: string
+  available: boolean
 }
 
 // Direction 1 practice panel: webcam -> landmarks -> ONNX worker -> debounce
@@ -30,6 +39,8 @@ export function SignPractice() {
   const [glossBuffer, setGlossBuffer] = useState<string[]>([])
   const [spoken, setSpoken] = useState<string[]>([])
   const [autoSpeakOn, setAutoSpeakOn] = useState(true)
+  const [mode, setMode] = useState<SignMode>('signs')
+  const [fs, setFs] = useState<FingerspellState | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => stopSignPipeline, [])
@@ -50,6 +61,7 @@ export function SignPractice() {
           setSpoken((prev) => [...prev.slice(-20), sentence])
           speak(sentence)
         },
+        onFingerspell: setFs,
         onError: (message) => setError(message)
       },
       { autoSpeak: autoSpeakOn }
@@ -64,6 +76,14 @@ export function SignPractice() {
     setStatus(null)
     setPrediction(null)
     setGlossBuffer([])
+    setFs(null)
+    setMode('signs')
+  }, [])
+
+  const switchMode = useCallback((m: SignMode) => {
+    setMode(m)
+    setSignMode(m)
+    setPrediction(null)
   }, [])
 
   const toggleAutoSpeak = useCallback((enabled: boolean) => {
@@ -120,6 +140,24 @@ export function SignPractice() {
           </div>
 
           <div className="row" style={{ marginTop: 8, gap: 16 }}>
+            {running && (
+              <span className="mode-toggle">
+                <button
+                  className={mode === 'signs' ? '' : 'secondary'}
+                  onClick={() => switchMode('signs')}
+                >
+                  Signs
+                </button>
+                <button
+                  className={mode === 'fingerspell' ? '' : 'secondary'}
+                  onClick={() => switchMode('fingerspell')}
+                  disabled={!fs?.available}
+                  title={fs?.available ? 'Spell words letter by letter (ASL alphabet)' : 'Fingerspell model not trained yet'}
+                >
+                  Fingerspell
+                </button>
+              </span>
+            )}
             <label className="muted small">
               <input
                 type="checkbox"
@@ -135,18 +173,28 @@ export function SignPractice() {
               hands: {status.handsPresent ? 'detected' : 'none'} · motion:{' '}
               {status.motionEnergy.toFixed(4)} · {status.isResting ? 'resting' : 'active'} ·{' '}
               {status.fps.toFixed(0)} fps
-              {prediction && (
+              {mode === 'signs' && prediction && (
                 <>
                   {' '}
                   · top: {prediction.gloss} ({(prediction.prob * 100).toFixed(1)}%)
                 </>
               )}
+              {mode === 'fingerspell' && fs && fs.letter && (
+                <>
+                  {' '}
+                  · letter: {fs.letter} ({(fs.prob * 100).toFixed(0)}%)
+                </>
+              )}
             </p>
           )}
 
-          {glossBuffer.length > 0 && (
+          {(glossBuffer.length > 0 || (mode === 'fingerspell' && fs?.word)) && (
             <p style={{ marginTop: 8, fontSize: 18 }}>
-              {glossBuffer.join(' ')} <span className="partial">▎</span>
+              {glossBuffer.join(' ')}
+              {mode === 'fingerspell' && fs?.word && (
+                <span className="partial"> {fs.word}</span>
+              )}{' '}
+              <span className="partial">▎</span>
             </p>
           )}
 
