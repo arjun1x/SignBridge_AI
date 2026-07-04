@@ -16,14 +16,27 @@ type SpeakingListener = (speaking: boolean, onDefaultOutput: boolean) => void
 
 const listeners = new Set<SpeakingListener>()
 const DEVICE_STORAGE_KEY = 'signbridge.ttsOutputDevice'
+const MONITOR_STORAGE_KEY = 'signbridge.ttsLocalMonitor'
 let queueDepth = 0
 let speaking = false
 let outputDeviceId = localStorage.getItem(DEVICE_STORAGE_KEY) ?? 'default'
+let localMonitor = localStorage.getItem(MONITOR_STORAGE_KEY) !== 'off'
 let piperReady = false
 
 export function setTtsOutputDevice(deviceId: string): void {
   outputDeviceId = deviceId
   localStorage.setItem(DEVICE_STORAGE_KEY, deviceId)
+}
+
+/** When the voice is routed to a call device, also play a quiet local copy
+ * so the signer knows what was said. */
+export function setTtsLocalMonitor(enabled: boolean): void {
+  localMonitor = enabled
+  localStorage.setItem(MONITOR_STORAGE_KEY, enabled ? 'on' : 'off')
+}
+
+export function getTtsLocalMonitor(): boolean {
+  return localMonitor
 }
 
 export function getTtsOutputDevice(): string {
@@ -39,7 +52,10 @@ export async function refreshTtsEngine(): Promise<'piper' | 'system'> {
 function setSpeaking(value: boolean): void {
   if (speaking === value) return
   speaking = value
-  for (const l of listeners) l(value, outputDeviceId === 'default')
+  // The voice is audible on the default output (and could echo into the
+  // caption loopback) when it plays there directly OR via the local monitor.
+  const audibleOnDefault = outputDeviceId === 'default' || localMonitor
+  for (const l of listeners) l(value, audibleOnDefault)
 }
 
 export function onSpeakingChange(listener: SpeakingListener): () => void {
@@ -83,14 +99,27 @@ async function speakPiper(text: string, rate: number): Promise<void> {
   const url = URL.createObjectURL(pcmToWavBlob(samples, sampleRate))
   try {
     const audio = new Audio(url)
-    if (outputDeviceId !== 'default') {
+    const routed = outputDeviceId !== 'default'
+    if (routed) {
       await audio.setSinkId(outputDeviceId)
     }
-    await audio.play()
-    await new Promise<void>((resolve) => {
-      audio.onended = () => resolve()
-      audio.onerror = () => resolve()
-    })
+    const players = [audio]
+    if (routed && localMonitor) {
+      // Quiet self-monitor on the default device: the call hears full volume
+      // through the cable; the signer hears a soft local copy.
+      const monitor = new Audio(url)
+      monitor.volume = 0.4
+      players.push(monitor)
+    }
+    await Promise.all(
+      players.map(async (p) => {
+        await p.play()
+        await new Promise<void>((resolve) => {
+          p.onended = () => resolve()
+          p.onerror = () => resolve()
+        })
+      })
+    )
   } finally {
     URL.revokeObjectURL(url)
   }

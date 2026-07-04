@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getTtsOutputDevice, refreshTtsEngine, setTtsOutputDevice, speak } from '../tts/ttsService'
+import {
+  getTtsLocalMonitor,
+  getTtsOutputDevice,
+  refreshTtsEngine,
+  setTtsLocalMonitor,
+  setTtsOutputDevice,
+  speak
+} from '../tts/ttsService'
 
 interface OutputDevice {
   deviceId: string
@@ -17,6 +24,7 @@ export function CallSetup() {
   const [outputs, setOutputs] = useState<OutputDevice[]>([])
   const [cableDetected, setCableDetected] = useState(false)
   const [selected, setSelected] = useState(getTtsOutputDevice())
+  const [monitor, setMonitor] = useState(getTtsLocalMonitor())
   const [engine, setEngine] = useState<'piper' | 'system'>('system')
   const [level, setLevel] = useState(0)
   const [metering, setMetering] = useState(false)
@@ -142,6 +150,17 @@ export function CallSetup() {
               </span>
             )}
           </div>
+          <label className="muted small" style={{ display: 'inline-block', marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={monitor}
+              onChange={(e) => {
+                setMonitor(e.target.checked)
+                setTtsLocalMonitor(e.target.checked)
+              }}
+            />{' '}
+            also play a quiet copy on my speakers (so I know when it speaks)
+          </label>
         </>
       )}
 
