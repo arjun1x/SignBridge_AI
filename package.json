@@ -16,5 +16,9 @@
     "download:tts": "node scripts/download-tts-model.mjs",
     "download:mediapipe": "node scripts/download-mediapipe-model.mjs",
     "postinstall": "node scripts/copy-ort-assets.mjs"
+  },
+  "devDependencies": {
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.35.3"
   }
 }

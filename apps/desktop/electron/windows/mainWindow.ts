@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 
 export function createMainWindow(): BrowserWindow {
@@ -6,6 +6,9 @@ export function createMainWindow(): BrowserWindow {
     width: 920,
     height: 680,
     title: 'SignBridge AI',
+    icon: app.isPackaged
+      ? join(process.resourcesPath, 'icon.png')
+      : join(app.getAppPath(), 'resources', 'icon.png'),
     backgroundColor: '#0f1115',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
