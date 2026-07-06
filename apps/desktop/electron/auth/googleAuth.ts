@@ -62,11 +62,17 @@ export function loadOAuthConfig(resourcesDir: string): OAuthConfig | null {
 const b64url = (buf: Buffer): string =>
   buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
+// Fixed preferred port so the redirect URI is deterministic: "Web application"
+// OAuth clients (unlike "Desktop app" ones) only accept pre-registered
+// redirect URIs, so users register http://127.0.0.1:51739/callback once.
+// Falls back to a random port if taken (fine for Desktop-type clients).
+const PREFERRED_PORT = 51739
+
 export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfile> {
   const verifier = b64url(randomBytes(32))
   const challenge = b64url(createHash('sha256').update(verifier).digest())
 
-  // Loopback server on a random free port receives the redirect.
+  // Loopback server receives the redirect.
   const { code, redirectUri } = await new Promise<{ code: string; redirectUri: string }>(
     (resolve, reject) => {
       const server = createServer((req, res) => {
@@ -93,7 +99,11 @@ export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfi
         server.close()
         reject(new Error('Sign-in timed out (3 minutes) — browser window closed?'))
       }, 180_000)
-      server.listen(0, '127.0.0.1', () => {
+      server.once('error', () => {
+        // preferred port taken — retry on a random one ('listening' fires again)
+        server.listen(0, '127.0.0.1')
+      })
+      server.on('listening', () => {
         const port = (server.address() as AddressInfo).port
         uri = `http://127.0.0.1:${port}/callback`
         const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth')
@@ -105,6 +115,7 @@ export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfi
         auth.searchParams.set('code_challenge_method', 'S256')
         shell.openExternal(auth.toString())
       })
+      server.listen(PREFERRED_PORT, '127.0.0.1')
     }
   )
 
