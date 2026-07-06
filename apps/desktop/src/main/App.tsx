@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { listenForPcmPort, setPcmMuted, startCapture, stopCapture } from '../capture/audioCapture'
 import { onSpeakingChange, refreshTtsEngine } from '../tts/ttsService'
+import { AnimatedBackground } from './AnimatedBackground'
 import { CallSetup } from './CallSetup'
 import { Logo } from './Logo'
 import { SignIn } from './SignIn'
@@ -101,8 +102,9 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <Logo className="logo" />
+      <AnimatedBackground dim />
+      <header className="topbar reveal">
+        <Logo className="logo" animated />
         <h1>
           Sign<span>Bridge</span>
         </h1>
@@ -123,7 +125,7 @@ export function App() {
         </div>
       </header>
 
-      <section className="card">
+      <section className="card reveal d1">
         <h2>Live captions (system audio → overlay)</h2>
         <p className="muted">
           Captures everything playing on this PC (Discord, Zoom, a video…) and shows live
@@ -150,11 +152,15 @@ export function App() {
         </div>
       </section>
 
-      <SignPractice />
+      <div className="reveal d2">
+        <SignPractice />
+      </div>
 
-      <CallSetup />
+      <div className="reveal d3">
+        <CallSetup />
+      </div>
 
-      <section className="card grow">
+      <section className="card grow reveal d4">
         <h2>Transcript</h2>
         <div className="log" ref={logRef}>
           {finals.map((l, i) => (

@@ -3,8 +3,10 @@ import { join } from 'path'
 
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 920,
-    height: 680,
+    width: 1240,
+    height: 800,
+    minWidth: 900,
+    minHeight: 620,
     title: 'SignBridge AI',
     icon: app.isPackaged
       ? join(process.resourcesPath, 'icon.png')
