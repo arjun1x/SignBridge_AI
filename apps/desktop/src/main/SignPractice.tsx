@@ -94,18 +94,26 @@ export function SignPractice() {
   return (
     <section className="card">
       <h2>Sign practice</h2>
-      <p className="muted">
-        Webcam -&gt; landmarks -&gt; recognition -&gt; glosses -&gt; spoken sentence.
+      <p className="card-desc">
+        Sign at your webcam — recognized words build a sentence and are spoken aloud.
       </p>
       {error && <p className="warn">{error}</p>}
 
-      <div className="row" style={{ alignItems: 'flex-start', gap: 16 }}>
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          style={{ width: 240, height: 180, background: '#000', borderRadius: 8 }}
-        />
+      <div className="row" style={{ alignItems: 'flex-start', gap: 18 }}>
+        <div className="preview">
+          <video ref={videoRef} muted playsInline />
+          {!running && (
+            <div className="preview-empty">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 7l-7 5 7 5V7z" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+              Camera preview appears here
+              <br />
+              when you start
+            </div>
+          )}
+        </div>
         <div style={{ flex: 1 }}>
           <div className="row" style={{ flexWrap: 'wrap' }}>
             {!running ? (
@@ -126,15 +134,23 @@ export function SignPractice() {
                 </button>
               </>
             )}
-            {running && !model && <span className="pill pill-off">loading model...</span>}
+            {running && !model && (
+              <span className="pill">
+                <i className="dot" />
+                Loading model…
+              </span>
+            )}
             {running && model && (
               <span
-                className={`pill ${model.testMode ? 'pill-off' : 'pill-on'}`}
-                title={model.testMode ? 'Untrained placeholder with loosened thresholds — glosses are garbage' : undefined}
+                className={`pill ${model.testMode ? '' : 'pill-on'}`}
+                title={
+                  model.testMode
+                    ? 'Untrained placeholder with loosened thresholds — words are not meaningful'
+                    : `Model: ${model.name}${model.valAcc !== null ? ` · ${(model.valAcc * 100).toFixed(0)}% validation accuracy` : ''}`
+                }
               >
-                {model.name}
-                {model.valAcc !== null && ` (val ${(model.valAcc * 100).toFixed(0)}%)`}
-                {model.testMode && ' — test mode'}
+                <i className="dot" />
+                {model.testMode ? 'Demo model' : 'Recognition ready'}
               </span>
             )}
           </div>
@@ -158,33 +174,36 @@ export function SignPractice() {
                 </button>
               </span>
             )}
-            <label className="muted small">
+            <label className="switch-label">
               <input
                 type="checkbox"
+                className="switch"
                 checked={autoSpeakOn}
                 onChange={(e) => toggleAutoSpeak(e.target.checked)}
-              />{' '}
-              auto-speak on rest
+              />
+              Speak automatically when I pause
             </label>
           </div>
 
           {status && (
-            <p className="muted small" style={{ marginTop: 8 }}>
-              hands: {status.handsPresent ? 'detected' : 'none'} · motion:{' '}
-              {status.motionEnergy.toFixed(4)} · {status.isResting ? 'resting' : 'active'} ·{' '}
-              {status.fps.toFixed(0)} fps
-              {mode === 'signs' && prediction && (
-                <>
-                  {' '}
-                  · top: {prediction.gloss} ({(prediction.prob * 100).toFixed(1)}%)
-                </>
-              )}
-              {mode === 'fingerspell' && fs && fs.letter && (
-                <>
-                  {' '}
-                  · letter: {fs.letter} ({(fs.prob * 100).toFixed(0)}%)
-                </>
-              )}
+            <p
+              className="small"
+              style={{ marginTop: 10 }}
+              title={`motion ${status.motionEnergy.toFixed(4)} · ${status.fps.toFixed(0)} fps`}
+            >
+              {!status.handsPresent
+                ? 'Show your hands to begin'
+                : status.isResting
+                  ? 'Hands at rest'
+                  : 'Watching your signing…'}
+              {mode === 'signs' &&
+                prediction &&
+                prediction.prob > 0.3 &&
+                ` · seeing "${prediction.gloss}" (${(prediction.prob * 100).toFixed(0)}%)`}
+              {mode === 'fingerspell' &&
+                fs &&
+                fs.letter &&
+                ` · letter ${fs.letter} (${(fs.prob * 100).toFixed(0)}%)`}
             </p>
           )}
 

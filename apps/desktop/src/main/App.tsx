@@ -108,8 +108,9 @@ export function App() {
         <h1>
           Sign<span>Bridge</span>
         </h1>
-        <span className={`pill ${running ? 'pill-on' : 'pill-off'}`}>
-          {running ? 'captions live' : 'captions idle'}
+        <span className={`pill ${running ? 'pill-on' : ''}`}>
+          <i className="dot" />
+          {running ? 'Captions live' : 'Captions idle'}
         </span>
         <div className="spacer" />
         <div className="user-chip">
@@ -126,10 +127,10 @@ export function App() {
       </header>
 
       <section className="card reveal d1">
-        <h2>Live captions (system audio → overlay)</h2>
-        <p className="muted">
-          Captures everything playing on this PC (Discord, Zoom, a video…) and shows live
-          captions in the on-screen overlay.
+        <h2>Live captions</h2>
+        <p className="card-desc">
+          Hears everything playing on this PC — Discord, Zoom, videos — and shows what's
+          said as captions floating above your call.
         </p>
         {modelFound === false && (
           <p className="warn">
@@ -137,7 +138,11 @@ export function App() {
             then restart the app.
           </p>
         )}
-        {modelDir && <p className="muted small">Model: {modelDir}</p>}
+        {modelDir && (
+          <p className="small" title={modelDir} style={{ margin: '2px 0 0' }}>
+            Speech model: English (streaming) · ready
+          </p>
+        )}
         {error && <p className="warn">{error}</p>}
         <div className="row">
           {!running ? (
@@ -168,7 +173,7 @@ export function App() {
           ))}
           {partial && <p className="partial">{partial}</p>}
           {!finals.length && !partial && (
-            <p className="muted">Nothing yet — start captions and play some speech.</p>
+            <p className="muted">Everything captioned in this session will appear here.</p>
           )}
         </div>
       </section>

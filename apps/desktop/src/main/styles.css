@@ -4,11 +4,12 @@
 
 :root {
   --bg: #050506;
-  --card: #0a0b0e;
+  --card: #0b0c10;
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.06);
   --text: #f4f5f7;
-  --text-dim: #8a8f98;
+  --text-dim: #9aa0ab;
+  --text-faint: #6a707b;
   --brand: #2b5cff;
   --brand-hover: #4070ff;
   --accent: #7fd0ff;
@@ -16,7 +17,8 @@
   --good-dim: rgba(62, 207, 122, 0.12);
   --danger: #f2b8b5;
   --danger-dim: rgba(220, 80, 70, 0.14);
-  --radius: 12px;
+  --radius-card: 14px;
+  --radius-ctl: 10px;
 }
 
 body {
@@ -25,16 +27,51 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  font-size: 13.5px;
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px 26px 24px;
+  gap: 16px;
+  padding: 16px 28px 26px;
   height: 100vh;
   max-width: 1220px;
   margin: 0 auto;
+}
+
+/* ================= type scale =================
+   Section title:  h2          15.5px / 650 / --text
+   Body copy:      .card-desc  13.5px / 400 / --text-dim
+   Microcopy:      .small      12px   / 400 / --text-faint
+   Buttons:        13px / 600
+================================================ */
+
+h2 {
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.card-desc {
+  color: var(--text-dim);
+  margin: 0 0 4px;
+  line-height: 1.55;
+  font-size: 13.5px;
+}
+
+.muted {
+  color: var(--text-dim);
+  margin: 4px 0;
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.small {
+  font-size: 12px;
+  color: var(--text-faint);
 }
 
 /* ---------- top bar ---------- */
@@ -117,24 +154,27 @@ body {
   box-shadow: none;
 }
 
-/* ---------- typography / bits ---------- */
-
-h2 {
-  font-size: 11px;
-  margin: 0 0 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  color: var(--text-dim);
-}
+/* ---------- status pill ---------- */
 
 .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12px;
-  padding: 4px 11px;
+  font-weight: 500;
+  padding: 5px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
   white-space: nowrap;
   color: var(--text-dim);
+}
+
+.pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 
 .pill-on {
@@ -143,20 +183,24 @@ h2 {
   border-color: rgba(62, 207, 122, 0.3);
 }
 
+.pill-on .dot {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ---------- cards ---------- */
+
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  border-radius: var(--radius-card);
+  padding: 22px 24px;
+  transition: border-color 0.18s ease;
   position: relative;
   z-index: 1;
 }
 
 .card:hover {
-  border-color: rgba(43, 92, 255, 0.45);
-  transform: translateY(-2px);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(43, 92, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .card.grow {
@@ -166,44 +210,36 @@ h2 {
   min-height: 0;
 }
 
-.muted {
-  color: var(--text-dim);
-  margin: 4px 0;
-  line-height: 1.5;
-  font-size: 14px;
-}
-
-.small {
-  font-size: 12px;
-}
-
 .warn {
   color: var(--danger);
   background: var(--danger-dim);
   border: 1px solid rgba(220, 80, 70, 0.25);
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-ctl);
   font-size: 13px;
 }
 
 .row {
   display: flex;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 14px;
   align-items: center;
 }
+
+/* ---------- buttons: one primary per card, ghosts for the rest ---------- */
 
 button {
   background: var(--brand);
   color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 13.5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  padding: 9px 20px;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease;
   position: relative;
   overflow: hidden;
 }
@@ -249,20 +285,139 @@ button.secondary {
 
 button.secondary:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.22);
   box-shadow: none;
 }
+
+/* ---------- toggle switches ---------- */
+
+label.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+input[type='checkbox'].switch {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.16s ease;
+  flex: none;
+  margin: 0;
+}
+
+input[type='checkbox'].switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.16s ease;
+}
+
+input[type='checkbox'].switch:checked {
+  background: var(--brand);
+}
+
+input[type='checkbox'].switch:checked::before {
+  transform: translateX(14px);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--brand);
+}
+
+/* ---------- select ---------- */
+
+select {
+  appearance: none;
+  background-color: rgba(255, 255, 255, 0.04);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%239aa0ab' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ctl);
+  padding: 9px 36px 9px 13px;
+  font-size: 13px;
+  font-family: inherit;
+  max-width: 340px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+select:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+select option {
+  background: #14161b;
+  color: var(--text);
+}
+
+/* ---------- webcam preview ---------- */
+
+.preview {
+  position: relative;
+  width: 260px;
+  flex: none;
+}
+
+.preview video {
+  display: block;
+  width: 100%;
+  height: 195px;
+  background: #000;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
+.preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px;
+}
+
+.preview-empty svg {
+  opacity: 0.55;
+}
+
+/* ---------- transcript ---------- */
 
 .log {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
   font-size: 14.5px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .log p {
-  margin: 2px 0;
+  margin: 3px 0;
 }
 
 .log .partial,
@@ -271,11 +426,13 @@ button.secondary:hover {
   font-style: italic;
 }
 
+/* ---------- misc controls ---------- */
+
 .mode-toggle {
   display: inline-flex;
   gap: 0;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--radius-ctl);
   overflow: hidden;
 }
 
@@ -289,21 +446,6 @@ button.secondary:hover {
 .mode-toggle button.secondary {
   border: none;
   background: transparent;
-}
-
-select {
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 9px 12px;
-  font-size: 13px;
-  font-family: inherit;
-  max-width: 320px;
-}
-
-input[type='checkbox'] {
-  accent-color: var(--brand);
 }
 
 .level-meter {
@@ -329,10 +471,6 @@ code {
   font-size: 0.9em;
 }
 
-video {
-  border: 1px solid var(--line);
-}
-
 ::-webkit-scrollbar {
   width: 9px;
 }
@@ -346,7 +484,7 @@ video {
   background: transparent;
 }
 
-/* ---------- ambient background (subtle on black) ---------- */
+/* ---------- ambient background ---------- */
 
 .ambient {
   position: fixed;
@@ -391,7 +529,7 @@ video {
 }
 
 .ambient-dim .orb {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .dotgrid {
@@ -504,7 +642,7 @@ video {
   }
 }
 
-/* ---------- sign-in: webstacks-style hero ---------- */
+/* ---------- sign-in hero ---------- */
 
 .signin {
   height: 100vh;
@@ -580,12 +718,10 @@ video {
 .signin-note {
   margin-top: 20px;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   line-height: 1.55;
   max-width: 440px;
 }
-
-/* floating 3D hand — the hero object */
 
 .hero-object {
   display: grid;
@@ -620,12 +756,12 @@ video {
   }
 }
 
-/* bordered stat grid, webstacks logo-wall style */
-
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border: 1px solid var(--line-soft);
+  border-radius: var(--radius-card);
+  overflow: hidden;
   position: relative;
   z-index: 1;
 }
@@ -655,7 +791,7 @@ video {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--text-dim);
+  color: var(--text-faint);
   margin: 0;
 }
 

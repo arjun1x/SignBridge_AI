@@ -108,17 +108,20 @@ export function CallSetup() {
 
   return (
     <section className="card">
-      <h2>Call integration (voice → Discord/Zoom)</h2>
+      <h2>Call integration</h2>
+      <p className="card-desc">
+        Sends the voice into Discord or Zoom, so the other side hears your signing as
+        speech.
+      </p>
 
       {!cableDetected ? (
         <>
           <p className="muted">
-            To make calls hear the synthesized voice, install the free VB-Audio Virtual
-            Cable, reboot, then rescan.
+            One-time setup: install the free virtual audio cable, reboot, then rescan.
           </p>
           <div className="row">
             <button onClick={() => window.open('https://vb-audio.com/Cable/', '_blank')}>
-              Get VB-Cable
+              Get the virtual cable
             </button>
             <button className="secondary" onClick={scanDevices}>
               Rescan devices
@@ -127,22 +130,22 @@ export function CallSetup() {
         </>
       ) : (
         <>
-          <p className="muted">
-            VB-Cable detected. 1) Voice output below → <b>CABLE Input</b>. 2) In
-            Discord/Zoom, set microphone → <b>CABLE Output</b>. 3) Test.
-          </p>
           <div className="row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <select value={selected} onChange={(e) => choose(e.target.value)}>
-              <option value="default">System default (local speakers)</option>
+            <select
+              value={selected}
+              onChange={(e) => choose(e.target.value)}
+              title={outputs.find((d) => d.deviceId === selected)?.label ?? 'System default'}
+            >
+              <option value="default">This computer's speakers</option>
               {outputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
-                  {d.label}
+                  {friendlyDeviceName(d.label)}
                 </option>
               ))}
             </select>
             <button onClick={testVoice}>Test voice</button>
             <button className="secondary" onClick={toggleMeter}>
-              {metering ? 'Stop meter' : 'Meter CABLE Output'}
+              {metering ? 'Stop test meter' : 'Check the connection'}
             </button>
             {metering && (
               <span className="level-meter">
@@ -150,23 +153,43 @@ export function CallSetup() {
               </span>
             )}
           </div>
-          <label className="muted small" style={{ display: 'inline-block', marginTop: 8 }}>
+          <label className="switch-label" style={{ marginTop: 12 }}>
             <input
               type="checkbox"
+              className="switch"
               checked={monitor}
               onChange={(e) => {
                 setMonitor(e.target.checked)
                 setTtsLocalMonitor(e.target.checked)
               }}
-            />{' '}
-            also play a quiet copy on my speakers (so I know when it speaks)
+            />
+            Play a quiet copy on my speakers so I know when it speaks
           </label>
+          <p className="small" style={{ marginTop: 10 }}>
+            In your call app, set the microphone to <b>CABLE Output</b>. Voice engine:{' '}
+            {engine === 'piper' ? 'neural (routable)' : 'system'}
+          </p>
         </>
       )}
 
-      <p className="muted small" style={{ marginTop: 8 }}>
-        Voice engine: {engine === 'piper' ? 'Piper (routable)' : 'System speechSynthesis — run "npm run download:tts" for the routable voice'}
-      </p>
+      {!cableDetected && (
+        <p className="small" style={{ marginTop: 8 }}>
+          Voice engine:{' '}
+          {engine === 'piper'
+            ? 'neural (routable)'
+            : 'system — run "npm run download:tts" for the routable neural voice'}
+        </p>
+      )}
     </section>
   )
+}
+
+// "CABLE Input (VB-Audio Virtual Cable)" is meaningless to end users — show
+// intent-based names, keep the technical name in the select's tooltip.
+function friendlyDeviceName(label: string): string {
+  if (label.startsWith('CABLE Input')) return 'Virtual cable → your call (recommended)'
+  if (label.startsWith('CABLE In 16ch')) return 'Virtual cable, 16-channel'
+  const vendor = label.match(/^(.*?)\s*\((.*)\)$/)
+  if (vendor) return `${vendor[1]} — ${vendor[2].replace(/\(R\)/g, '')}`
+  return label
 }
