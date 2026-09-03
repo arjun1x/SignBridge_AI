@@ -492,65 +492,195 @@ code {
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
+  /* Base wash so the page is never flat #050506 even before anything moves. */
+  background:
+    radial-gradient(120% 80% at 18% -10%, rgba(43, 92, 255, 0.16), transparent 60%),
+    radial-gradient(100% 70% at 92% 8%, rgba(127, 208, 255, 0.09), transparent 62%),
+    radial-gradient(120% 90% at 50% 112%, rgba(76, 44, 190, 0.16), transparent 62%);
+}
+
+/* Slowly rotating aurora sweep. One large conic gradient on a rotate
+   transform — composited on the GPU, so it costs the main thread nothing
+   even while MediaPipe + ONNX are running there. */
+.aurora {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 180vmax;
+  height: 180vmax;
+  margin: -90vmax 0 0 -90vmax;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(43, 92, 255, 0.16) 42deg,
+    transparent 96deg,
+    rgba(127, 208, 255, 0.1) 168deg,
+    transparent 220deg,
+    rgba(120, 60, 220, 0.15) 290deg,
+    transparent 344deg
+  );
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+  animation: aurora-spin 64s linear infinite;
+}
+
+/* Drifting dot grid. The tile is 40px and the loop translates exactly one
+   tile diagonally, so the motion is continuous with no visible seam. */
+.dotgrid {
+  position: absolute;
+  inset: -60px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(120% 90% at 50% 30%, #000 25%, transparent 78%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 30%, #000 25%, transparent 78%);
+  will-change: transform;
+  animation: grid-drift 24s linear infinite;
 }
 
 .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
+  filter: blur(90px);
   will-change: transform;
 }
 
+/* Five orbs on closed-loop orbits at coprime-ish durations, so the
+   composition never repeats a recognizable arrangement. Closed loops (not
+   `alternate`) mean they glide continuously instead of bouncing back. */
 .orb-a {
-  width: 480px;
-  height: 480px;
-  right: -120px;
-  top: -160px;
-  background: radial-gradient(circle, rgba(43, 92, 255, 0.22), transparent 65%);
-  animation: drift-a 28s ease-in-out infinite alternate;
+  width: 460px;
+  height: 460px;
+  right: -100px;
+  top: -140px;
+  background: radial-gradient(circle, rgba(43, 92, 255, 0.5), transparent 66%);
+  animation: orbit-a 34s ease-in-out infinite;
 }
 
 .orb-b {
-  width: 420px;
-  height: 420px;
-  left: -160px;
-  top: 40%;
-  background: radial-gradient(circle, rgba(127, 208, 255, 0.1), transparent 65%);
-  animation: drift-b 34s ease-in-out infinite alternate;
+  width: 400px;
+  height: 400px;
+  left: -140px;
+  top: 38%;
+  background: radial-gradient(circle, rgba(127, 208, 255, 0.32), transparent 66%);
+  animation: orbit-b 43s ease-in-out infinite;
 }
 
 .orb-c {
   width: 520px;
   height: 520px;
-  left: 40%;
-  bottom: -300px;
-  background: radial-gradient(circle, rgba(60, 40, 180, 0.16), transparent 65%);
-  animation: drift-c 40s ease-in-out infinite alternate;
+  left: 38%;
+  bottom: -280px;
+  background: radial-gradient(circle, rgba(96, 56, 220, 0.42), transparent 66%);
+  animation: orbit-c 52s ease-in-out infinite;
 }
 
-.ambient-dim .orb {
-  opacity: 0.45;
+.orb-d {
+  width: 320px;
+  height: 320px;
+  left: 12%;
+  top: -120px;
+  background: radial-gradient(circle, rgba(62, 207, 122, 0.16), transparent 66%);
+  animation: orbit-d 47s ease-in-out infinite;
 }
 
-.dotgrid {
-  display: none;
+.orb-e {
+  width: 380px;
+  height: 380px;
+  right: 6%;
+  bottom: -200px;
+  background: radial-gradient(circle, rgba(0, 190, 210, 0.22), transparent 66%);
+  animation: orbit-e 39s ease-in-out infinite;
 }
 
-@keyframes drift-a {
+/* Behind the app UI the wash is pulled back so card text keeps its contrast;
+   the sign-in screen (no .ambient-dim) shows it at full strength. */
+.ambient-dim {
+  opacity: 0.8;
+}
+
+.ambient-dim .dotgrid {
+  opacity: 0.55;
+}
+
+@keyframes aurora-spin {
   to {
-    transform: translate(-110px, 80px) scale(1.12);
+    transform: rotate(360deg);
   }
 }
 
-@keyframes drift-b {
+@keyframes grid-drift {
   to {
-    transform: translate(110px, -60px) scale(0.92);
+    transform: translate3d(40px, 40px, 0);
   }
 }
 
-@keyframes drift-c {
-  to {
-    transform: translate(-80px, -110px) scale(1.08);
+@keyframes orbit-a {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(-150px, 90px, 0) scale(1.14);
+  }
+  66% {
+    transform: translate3d(-60px, 210px, 0) scale(0.94);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes orbit-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(160px, -110px, 0) scale(0.9);
+  }
+  66% {
+    transform: translate3d(240px, 70px, 0) scale(1.12);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes orbit-c {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(-190px, -140px, 0) scale(1.1);
+  }
+  66% {
+    transform: translate3d(150px, -60px, 0) scale(0.92);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes orbit-d {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(220px, 160px, 0) scale(1.2);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes orbit-e {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-200px, -170px, 0) scale(0.88);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -799,6 +929,8 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
   .orb,
+  .aurora,
+  .dotgrid,
   .logo-animated .logo-hand,
   .logo-animated .logo-wave,
   .hero-hand {
