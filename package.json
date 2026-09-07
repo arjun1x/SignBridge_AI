@@ -15,7 +15,10 @@
     "download:stt": "node scripts/download-stt-model.mjs",
     "download:tts": "node scripts/download-tts-model.mjs",
     "download:mediapipe": "node scripts/download-mediapipe-model.mjs",
-    "postinstall": "node scripts/copy-ort-assets.mjs"
+    "postinstall": "node scripts/copy-ort-assets.mjs",
+    "typecheck": "tsc --noEmit -p apps/desktop/tsconfig.json",
+    "test:runtime": "node --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm run test:runtime && npm run build"
   },
   "devDependencies": {
     "png-to-ico": "^3.0.1",

@@ -1,0 +1,31 @@
+# Smaller-model experiment. Compare accuracy AND target-device latency before promotion.
+seed: 0
+data:
+  processed_dir: data/processed
+  window_frames: 64
+  feature_dim: 184
+model:
+  d_model: 128
+  n_heads: 4
+  n_layers: 2
+  ffn_dim: 256
+  dropout: 0.15
+  conv_kernel: 5
+train:
+  batch_size: 256
+  epochs: 100
+  lr: 0.0004
+  weight_decay: 0.05
+  label_smoothing: 0.05
+  warmup_epochs: 5
+  grad_clip: 1.0
+  num_workers: 6
+  patience: 15
+  amp_dtype: bfloat16
+augment:
+  mirror_prob: 0.5
+  affine_jitter_std: 0.02
+  landmark_noise_std: 0.005
+  hand_dropout_prob: 0.05
+output:
+  checkpoint_dir: checkpoints/gislr_fast

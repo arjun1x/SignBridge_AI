@@ -5,13 +5,13 @@ export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1240,
     height: 800,
-    minWidth: 900,
+    minWidth: 380,
     minHeight: 620,
     title: 'SignBridge AI',
     icon: app.isPackaged
       ? join(process.resourcesPath, 'icon.png')
       : join(app.getAppPath(), 'resources', 'icon.png'),
-    backgroundColor: '#0f1115',
+    backgroundColor: '#090f1b',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true

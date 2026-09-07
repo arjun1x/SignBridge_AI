@@ -82,20 +82,27 @@ class GislrDataset(Dataset):
         return np.concatenate([pad, feats], axis=0), mask
 
     def _augment(self, feats: np.ndarray) -> np.ndarray:
-        # Jitter/noise applied directly in (already-normalized) feature space
-        # rather than re-deriving from raw landmarks — equivalent for small
-        # perturbations and far simpler.
+        # Only observed coordinates are augmented. Padding is added AFTER this
+        # function; the two binary hand-presence flags never receive noise.
+        feats = feats.copy()
+        coords = feats[:, :182].reshape(-1, 91, 2)
+        observed = np.any(coords != 0.0, axis=-1)
+        observed[:, :21] &= feats[:, 182:183] > 0.5
+        observed[:, 21:42] &= feats[:, 183:184] > 0.5
         if self.affine_jitter_std > 0:
-            feats = feats + np.random.normal(0, self.affine_jitter_std, size=(1, feats.shape[1])).astype(
-                np.float32
-            )
+            angle = np.random.normal(0, self.affine_jitter_std * 3)
+            scale = np.clip(1 + np.random.normal(0, self.affine_jitter_std), 0.9, 1.1)
+            rotation = np.array([[np.cos(angle), -np.sin(angle)],
+                                 [np.sin(angle), np.cos(angle)]], dtype=np.float32)
+            coords[:] = coords @ rotation.T * scale
         if self.landmark_noise_std > 0:
-            feats = feats + np.random.normal(0, self.landmark_noise_std, size=feats.shape).astype(np.float32)
+            coords += np.random.normal(0, self.landmark_noise_std, coords.shape).astype(np.float32)
+        coords[~observed] = 0
         if self.hand_dropout_prob > 0:
-            if np.random.random() < self.hand_dropout_prob:
-                feats[:, 0:42] = 0.0
-            if np.random.random() < self.hand_dropout_prob:
-                feats[:, 42:84] = 0.0
+            for lo, hi, flag in [(0, 42, 182), (42, 84, 183)]:
+                if np.random.random() < self.hand_dropout_prob:
+                    feats[:, lo:hi] = 0.0
+                    feats[:, flag] = 0.0
         return feats
 
     def __getitem__(self, i: int):
@@ -107,8 +114,8 @@ class GislrDataset(Dataset):
         if self.train and self.mirror_prob > 0 and np.random.random() < self.mirror_prob:
             feats = mirror_feature_sequence(feats)
 
-        feats, mask = self._pad_or_crop(feats)
         if self.train:
             feats = self._augment(feats)
+        feats, mask = self._pad_or_crop(feats)
 
         return torch.from_numpy(feats), torch.from_numpy(mask), label

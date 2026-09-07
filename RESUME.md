@@ -1,3 +1,6 @@
+> Historical reference for the original version. These metrics were not re-measured
+> for this source upgrade; see [UPDATE_REPORT.md](UPDATE_REPORT.md) for current changes and limits.
+
 # SignBridge AI — Technical Project Summary (Resume Reference)
 
 A real-time, two-way ASL accessibility layer for video calls, built solo in ~5 weeks.

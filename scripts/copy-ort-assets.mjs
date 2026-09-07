@@ -4,7 +4,7 @@
 // violate that isolation anyway):
 //   - onnxruntime-web's .jsep variant (needed for both the WebGPU EP and its
 //     wasm CPU-fallback ops)
-//   - @mediapipe/tasks-vision's generic (non-SIMD-only) wasm runtime, used
+//   - @mediapipe/tasks-vision's ES-module wasm runtime for the module worker, used
 //     via an explicit WasmFileset rather than FilesetResolver.forVisionTasks
 //     so we don't depend on its undocumented CDN-relative path convention.
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
@@ -35,5 +35,5 @@ copyAll(
 copyAll(
   join(root, 'node_modules', '@mediapipe', 'tasks-vision', 'wasm'),
   join(root, 'apps', 'desktop', 'src', 'public', 'mediapipe'),
-  ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']
+  ['vision_wasm_module_internal.js', 'vision_wasm_module_internal.wasm']
 )

@@ -1,233 +1,119 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  backspaceGloss,
-  clearGlossBuffer,
-  ModelInfo,
-  setAutoSpeak,
-  setSignMode,
-  SignMode,
-  SignPipelineStatus,
-  speakNow,
-  startSignPipeline,
-  stopSignPipeline
+  backspaceGloss, clearGlossBuffer, commitWord, setAutoSpeak, setSignMode,
+  speakNow, startSignPipeline, stopSignPipeline, appendLetter,
+  type ModelInfo, type SignMode, type SignPipelineStatus, type FingerspellState
 } from '../vision/signPipeline'
-import { speak } from '../tts/ttsService'
+import { speak, cancelSpeech } from '../tts/ttsService'
 
-interface Prediction {
-  gloss: string
-  prob: number
-  ts: number
-}
-
-interface FingerspellState {
-  letter: string
-  prob: number
-  word: string
-  available: boolean
-}
-
-// Direction 1 practice panel: webcam -> landmarks -> ONNX worker -> debounce
-// -> sentence assembly -> TTS. The pipeline auto-selects the real trained
-// model (signs_v1) when it's been synced in, else the untrained placeholder
-// with loosened thresholds (glosses are garbage in that mode).
+const CONNECTIONS = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17]]
 export function SignPractice() {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [running, setRunning] = useState(false)
+  const video = useRef<HTMLVideoElement>(null)
+  const canvas = useRef<HTMLCanvasElement>(null)
+  const [state, setState] = useState<'idle' | 'loading' | 'running'>('idle')
+  const [mode, setMode] = useState<SignMode>('fingerspell')
   const [model, setModel] = useState<ModelInfo | null>(null)
   const [status, setStatus] = useState<SignPipelineStatus | null>(null)
-  const [prediction, setPrediction] = useState<Prediction | null>(null)
-  const [glossBuffer, setGlossBuffer] = useState<string[]>([])
-  const [spoken, setSpoken] = useState<string[]>([])
-  const [autoSpeakOn, setAutoSpeakOn] = useState(true)
-  const [mode, setMode] = useState<SignMode>('signs')
   const [fs, setFs] = useState<FingerspellState | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => stopSignPipeline, [])
-
-  const start = useCallback(async () => {
-    if (!videoRef.current) return
-    setError(null)
-    setModel(null)
-    setSpoken([])
-    await startSignPipeline(
-      videoRef.current,
-      {
-        onReady: setModel,
-        onStatus: setStatus,
-        onPrediction: setPrediction,
-        onGlossBuffer: setGlossBuffer,
-        onSentence: (sentence) => {
-          setSpoken((prev) => [...prev.slice(-20), sentence])
-          speak(sentence)
-        },
-        onFingerspell: setFs,
-        onError: (message) => setError(message)
-      },
-      { autoSpeak: autoSpeakOn }
-    )
-    setRunning(true)
-  }, [autoSpeakOn])
-
-  const stop = useCallback(() => {
-    stopSignPipeline()
-    setRunning(false)
-    setModel(null)
-    setStatus(null)
-    setPrediction(null)
-    setGlossBuffer([])
-    setFs(null)
-    setMode('signs')
-  }, [])
-
-  const switchMode = useCallback((m: SignMode) => {
-    setMode(m)
-    setSignMode(m)
-    setPrediction(null)
-  }, [])
-
-  const toggleAutoSpeak = useCallback((enabled: boolean) => {
-    setAutoSpeakOn(enabled)
-    setAutoSpeak(enabled)
-  }, [])
-
-  return (
-    <section className="card">
-      <h2>Sign practice</h2>
-      <p className="card-desc">
-        Sign at your webcam — recognized words build a sentence and are spoken aloud.
-      </p>
-      {error && <p className="warn">{error}</p>}
-
-      <div className="row" style={{ alignItems: 'flex-start', gap: 18 }}>
-        <div className="preview">
-          <video ref={videoRef} muted playsInline />
-          {!running && (
-            <div className="preview-empty">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 7l-7 5 7 5V7z" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-              </svg>
-              Camera preview appears here
-              <br />
-              when you start
-            </div>
-          )}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div className="row" style={{ flexWrap: 'wrap' }}>
-            {!running ? (
-              <button onClick={start}>Start sign practice</button>
-            ) : (
-              <>
-                <button className="secondary" onClick={stop}>
-                  Stop
-                </button>
-                <button onClick={speakNow} disabled={glossBuffer.length === 0}>
-                  Speak
-                </button>
-                <button className="secondary" onClick={backspaceGloss} disabled={glossBuffer.length === 0}>
-                  ⌫
-                </button>
-                <button className="secondary" onClick={clearGlossBuffer} disabled={glossBuffer.length === 0}>
-                  Clear
-                </button>
-              </>
-            )}
-            {running && !model && (
-              <span className="pill">
-                <i className="dot" />
-                Loading model…
-              </span>
-            )}
-            {running && model && (
-              <span
-                className={`pill ${model.testMode ? '' : 'pill-on'}`}
-                title={
-                  model.testMode
-                    ? 'Untrained placeholder with loosened thresholds — words are not meaningful'
-                    : `Model: ${model.name}${model.valAcc !== null ? ` · ${(model.valAcc * 100).toFixed(0)}% validation accuracy` : ''}`
-                }
-              >
-                <i className="dot" />
-                {model.testMode ? 'Demo model' : 'Recognition ready'}
-              </span>
-            )}
-          </div>
-
-          <div className="row" style={{ marginTop: 8, gap: 16 }}>
-            {running && (
-              <span className="mode-toggle">
-                <button
-                  className={mode === 'signs' ? '' : 'secondary'}
-                  onClick={() => switchMode('signs')}
-                >
-                  Signs
-                </button>
-                <button
-                  className={mode === 'fingerspell' ? '' : 'secondary'}
-                  onClick={() => switchMode('fingerspell')}
-                  disabled={!fs?.available}
-                  title={fs?.available ? 'Spell words letter by letter (ASL alphabet)' : 'Fingerspell model not trained yet'}
-                >
-                  Fingerspell
-                </button>
-              </span>
-            )}
-            <label className="switch-label">
-              <input
-                type="checkbox"
-                className="switch"
-                checked={autoSpeakOn}
-                onChange={(e) => toggleAutoSpeak(e.target.checked)}
-              />
-              Speak automatically when I pause
-            </label>
-          </div>
-
-          {status && (
-            <p
-              className="small"
-              style={{ marginTop: 10 }}
-              title={`motion ${status.motionEnergy.toFixed(4)} · ${status.fps.toFixed(0)} fps`}
-            >
-              {!status.handsPresent
-                ? 'Show your hands to begin'
-                : status.isResting
-                  ? 'Hands at rest'
-                  : 'Watching your signing…'}
-              {mode === 'signs' &&
-                prediction &&
-                prediction.prob > 0.3 &&
-                ` · seeing "${prediction.gloss}" (${(prediction.prob * 100).toFixed(0)}%)`}
-              {mode === 'fingerspell' &&
-                fs &&
-                fs.letter &&
-                ` · letter ${fs.letter} (${(fs.prob * 100).toFixed(0)}%)`}
-            </p>
-          )}
-
-          {(glossBuffer.length > 0 || (mode === 'fingerspell' && fs?.word)) && (
-            <p style={{ marginTop: 8, fontSize: 18 }}>
-              {glossBuffer.join(' ')}
-              {mode === 'fingerspell' && fs?.word && (
-                <span className="partial"> {fs.word}</span>
-              )}{' '}
-              <span className="partial">▎</span>
-            </p>
-          )}
-
-          {spoken.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              {spoken.slice(-3).map((s, i) => (
-                <p key={i} className="muted small">
-                  🔊 {s}
-                </p>
-              ))}
-            </div>
-          )}
+  const [prediction, setPrediction] = useState<{ gloss: string; prob: number } | null>(null)
+  const [buffer, setBuffer] = useState<string[]>([])
+  const [spoken, setSpoken] = useState<string[]>([])
+  const [autoSpeak, toggleSpeak] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => () => { stopSignPipeline(); cancelSpeech() }, [])
+  const running = state === 'running'
+  const hasText = buffer.length > 0 || Boolean(fs?.word)
+  function drawHands(hands: number[][]) {
+    const target = canvas.current; const player = video.current
+    if (!target || !player) return
+    target.width = player.videoWidth || 640; target.height = player.videoHeight || 480
+    const ctx = target.getContext('2d'); if (!ctx) return
+    ctx.clearRect(0, 0, target.width, target.height)
+    ctx.strokeStyle = '#70ffd6'; ctx.lineWidth = 2.4; ctx.fillStyle = '#fff'
+    for (const hand of hands) {
+      for (const path of CONNECTIONS) {
+        ctx.beginPath()
+        path.forEach((index, i) => {
+          const x = hand[index * 3] * target.width; const y = hand[index * 3 + 1] * target.height
+          if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y)
+        })
+        ctx.stroke()
+      }
+      for (let i = 0; i < 21; i++) {
+        ctx.beginPath(); ctx.arc(hand[i * 3] * target.width, hand[i * 3 + 1] * target.height, 3.4, 0, Math.PI * 2); ctx.fill()
+      }
+    }
+  }
+  async function start() {
+    if (!video.current || state !== 'idle') return
+    setError(''); setModel(null); setStatus(null); setFs(null); setBuffer([])
+    await startSignPipeline(video.current, {
+      onState: (next) => { setState(next); if (next === 'idle') { setStatus(null); setFs(null); setBuffer([]); setModel(null); setPrediction(null) } },
+      onReady: setModel, onStatus: setStatus, onFingerspell: setFs,
+      onPrediction: setPrediction, onGlossBuffer: setBuffer,
+      onSentence: (sentence) => { setSpoken((old) => [...old.slice(-19), sentence]); speak(sentence) },
+      onError: setError, onLandmarks: drawHands
+    }, { mode, autoSpeak })
+  }
+  async function switchMode(next: SignMode) {
+    if (next === mode) return
+    setMode(next); setError(''); setModel(null); setStatus(null); setFs(null); setPrediction(null)
+    await setSignMode(next)
+  }
+  const label = mode === 'fingerspell' ? fs?.letter : prediction?.gloss
+  const confidence = mode === 'fingerspell' ? fs?.prob ?? 0 : prediction?.prob ?? 0
+  const uncertain = mode === 'fingerspell' ? fs?.uncertain !== false : confidence < 0.6
+  return <section className="studio card" id="studio" aria-labelledby="studio-title">
+    <div className="section-heading"><div><p className="eyebrow">01 / YOUR EXPRESSION</p><h2 id="studio-title">Signing studio</h2></div>
+      <span className={`pill ${running ? 'pill-on' : ''}`}>{state === 'loading' ? 'Preparing recognition…' : running ? 'Camera on' : 'Camera off'}</span>
+    </div>
+    <div className="studio-toolbar">
+      <div className="mode-toggle" role="group" aria-label="Recognition mode">
+        <button aria-pressed={mode === 'fingerspell'} onClick={() => switchMode('fingerspell')} disabled={state === 'loading'}>Aa <span>Fingerspell</span></button>
+        <button aria-pressed={mode === 'signs'} onClick={() => switchMode('signs')} disabled={state === 'loading'}>✧ <span>ASL signs</span></button>
+      </div>
+      <span className="small">{mode === 'fingerspell' ? 'One hand. One letter at a time.' : 'Keep your hands and upper body in view.'}</span>
+    </div>
+    {error && <p className="warn" role="alert">{error}</p>}
+    <div className="studio-grid">
+      <div className="camera-stage">
+        <video ref={video} muted playsInline aria-label="Mirrored camera preview" />
+        <canvas ref={canvas} className="landmarks" aria-hidden="true" />
+        <div className="camera-corners" aria-hidden="true" />
+        {state !== 'idle' && <span className="camera-label">{status?.handsPresent ? 'HAND TRACKED' : state === 'loading' ? 'LOADING' : 'SHOW YOUR HAND'}</span>}
+        {!running && <div className="camera-empty">
+          <div className="camera-symbol" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="8" y="17" width="33" height="30" rx="8"/><path d="m41 28 15-9v27l-15-9"/></svg></div>
+          <h3>{state === 'loading' ? 'Getting ready for your hands…' : 'Your next conversation starts here.'}</h3>
+          <p>{state === 'loading' ? 'Loading your local recognition model.' : 'Find some light, bring your hand into view, and make yourself heard.'}</p>
+          {state === 'idle' && <button onClick={start}>Start camera <span aria-hidden="true">↗</span></button>}
+        </div>}
+        <div className="camera-footer"><span>◈ Camera frames stay on this device</span>
+          {state !== 'idle' && <button className="stop-button" onClick={stopSignPipeline}>{state === 'loading' ? 'Cancel' : 'Stop camera'}</button>}
         </div>
       </div>
-    </section>
-  )
+      <aside className="recognition-panel" aria-label="Recognition result">
+        <p className="eyebrow">{mode === 'fingerspell' ? 'CURRENT LETTER' : 'CURRENT SIGN'}</p>
+        <div className={`recognized-label ${uncertain ? 'uncertain' : ''}`}>{running && status?.handsPresent && label && label !== 'nothing' ? label : '—'}</div>
+        <p className="recognition-hint">{!running ? 'Ready when you are' : !status?.handsPresent ? 'Bring your hand into view' : uncertain ? ['J','Z'].includes(label ?? '') ? 'This letter needs movement' : 'Adjust your hand; prediction uncertain' : 'Hold briefly to add it'}</p>
+        <div className="confidence-label"><span>Model confidence</span><strong>{running && status?.handsPresent ? `${Math.round(confidence * 100)}%` : '—'}</strong></div>
+        <meter min="0" max="1" value={running && status?.handsPresent ? confidence : 0} aria-label="Model confidence" />
+        <p className="small confidence-note">Confidence is a model score, not a guarantee.</p>
+        <div className="live-metrics"><div><strong>{status ? Math.round(status.fps) : '—'}</strong><span>processed fps</span></div><div title={status?.backend}><strong>{status ? Math.round(status.latencyMs) : '—'}<small>{status ? ' ms' : ''}</small></strong><span>frame processing</span></div></div>
+        <p className="small">{model ? `${model.name} · on device` : 'A trained model is required'}</p>
+      </aside>
+    </div>
+    <div className="sentence-area">
+      <div className="sentence-title"><span className="eyebrow">YOUR WORDS</span><label className="switch-label"><input className="switch" type="checkbox" checked={autoSpeak} onChange={(e) => { toggleSpeak(e.target.checked); setAutoSpeak(e.target.checked) }} />Speak after hands leave view</label></div>
+      <p className={`sentence ${hasText ? '' : 'muted'}`} aria-live="polite" aria-atomic="true">{hasText ? <>{buffer.join(' ')} <span className="current-word">{fs?.word}</span></> : 'Your words will take shape here.'}</p>
+      <div className="sentence-actions">
+        <button onClick={speakNow} disabled={!hasText || !running}>Speak aloud</button>
+        {mode === 'fingerspell' && <button className="secondary" onClick={commitWord} disabled={!fs?.word || !running}>Add space</button>}
+        <button className="text-button" onClick={backspaceGloss} disabled={!hasText || !running}>⌫ Backspace</button>
+        <button className="text-button" onClick={clearGlossBuffer} disabled={!hasText || !running}>Clear</button>
+      </div>
+      <p className="small">{mode === 'fingerspell' ? 'Hold a letter to add it. Relax your hand briefly to repeat a letter. Lower your hand to finish a word.' : 'Recognized signs are joined in signing order; they are not a translation of full ASL grammar.'}</p>
+      {mode === 'fingerspell' && <div className="motion-letter-note"><span>J and Z need motion. Add them manually:</span><button className="secondary" disabled={!running} onClick={() => appendLetter('J')} aria-label="Add letter J">J</button><button className="secondary" disabled={!running} onClick={() => appendLetter('Z')} aria-label="Add letter Z">Z</button></div>}
+      {spoken.length > 0 && <p className="last-spoken"><span>LAST SPOKEN</span> {spoken.at(-1)}</p>}
+    </div>
+  </section>
 }

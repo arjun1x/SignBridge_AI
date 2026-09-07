@@ -44,8 +44,17 @@ export function getTtsOutputDevice(): string {
 }
 
 export async function refreshTtsEngine(): Promise<'piper' | 'system'> {
-  const status = await window.signbridge.ttsStatus().catch(() => ({ modelFound: false, ready: false }))
-  piperReady = status.ready
+  if (!window.signbridge) { piperReady = false; return 'system' }
+  // The Piper voice loads asynchronously in the speech utility process at app
+  // start. A status query that lands before it finishes would pin the whole
+  // session to the system voice, which cannot be routed to a call device, so
+  // keep polling briefly while the voice files exist but are not ready yet.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const status = await window.signbridge.ttsStatus().catch(() => ({ modelFound: false, ready: false }))
+    piperReady = status.ready
+    if (piperReady || !status.modelFound) break
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   return piperReady ? 'piper' : 'system'
 }
 
@@ -141,7 +150,9 @@ export function speak(text: string, opts?: { rate?: number }): void {
 
   queueDepth++
   setSpeaking(true)
-  const job = piperReady ? speakPiper(text, rate) : speakSystem(text, rate)
+  // Re-check lazily: the voice may have finished loading since the last status query.
+  const engine = piperReady ? Promise.resolve<'piper' | 'system'>('piper') : refreshTtsEngine()
+  const job = engine.then((e) => (e === 'piper' ? speakPiper(text, rate) : speakSystem(text, rate)))
   job
     .catch((err) => console.error('TTS failed:', err))
     .finally(() => {

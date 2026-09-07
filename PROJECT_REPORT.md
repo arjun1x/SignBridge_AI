@@ -1,3 +1,6 @@
+> Historical reference for the original version. These metrics were not re-measured
+> for this source upgrade; see [UPDATE_REPORT.md](UPDATE_REPORT.md) for current changes and limits.
+
 # SignBridge AI — Complete Project Report
 
 *A two-way, fully on-device ASL accessibility layer for video calls.*

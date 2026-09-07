@@ -1,34 +1,23 @@
-// Downloads the MediaPipe HolisticLandmarker .task model into
-// apps/desktop/src/public/mediapipe/. Unlike the STT model (loaded via fs by
-// a Node utility process), HolisticLandmarker runs in the renderer and
-// fetches its model over HTTP, so it must live in the renderer's public dir,
-// not electron's extraResources. Model binaries are never committed.
-import { createWriteStream, existsSync, mkdirSync } from 'fs'
-import { Readable } from 'stream'
-import { pipeline } from 'stream/promises'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
-
-const URL =
-  'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task'
-
+// Local, pinned MediaPipe assets. A partial download never masquerades as a model.
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const outDir = join(root, 'apps', 'desktop', 'src', 'public', 'mediapipe')
-const outPath = join(outDir, 'holistic_landmarker.task')
-
-if (existsSync(outPath)) {
-  console.log(`Already present: ${outPath}`)
-  process.exit(0)
-}
-
+const outDir = join(root, 'apps/desktop/src/public/mediapipe')
 mkdirSync(outDir, { recursive: true })
-console.log(`Downloading ${URL} (~13 MB)`)
-
-const res = await fetch(URL, { redirect: 'follow' })
-if (!res.ok) {
-  console.error(`Download failed: HTTP ${res.status}`)
-  process.exit(1)
+for (const name of ['hand_landmarker', 'holistic_landmarker']) {
+  const out = join(outDir, `${name}.task`)
+  if (existsSync(out) && statSync(out).size > 1000000) { console.log(`Present: ${name}`); continue }
+  const url = `https://storage.googleapis.com/mediapipe-models/${name}/${name}/float16/1/${name}.task`
+  const temp = `${out}.partial`
+  try {
+    console.log(`Downloading ${name}…`)
+    const res = await fetch(url, { signal: AbortSignal.timeout(180000) })
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+    await pipeline(Readable.fromWeb(res.body), createWriteStream(temp))
+    if (statSync(temp).size < 1000000) throw new Error('Model download is unexpectedly small')
+    renameSync(temp, out)
+  } catch (err) { rmSync(temp, { force: true }); throw err }
 }
-
-await pipeline(Readable.fromWeb(res.body), createWriteStream(outPath))
-console.log(`Done: ${outPath}`)

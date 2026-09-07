@@ -1,56 +1,52 @@
-// Fingerspelling letter commit: per-frame letter predictions are noisy while
-// the hand transitions between poses, so a letter is committed only after it
-// has been the stable top-1 (above minProb) for stableFrames consecutive
-// frames. After a commit, the SAME letter can't recommit until the hand
-// breaks the pose (a different letter wins or the hand leaves the frame) —
-// so "LL" is spelled by relaxing the hand briefly between the two L's,
-// standard fingerspelling-recognizer UX.
+// Time-based evidence is independent of camera/display refresh rate.
 export interface LetterCommitterConfig {
-  minProb: number
-  stableFrames: number
+  minProb: number; minMargin: number; stableMs: number; fastMs: number
+  fastProb: number; releaseMs: number; minSamples: number
 }
-
-export const DEFAULT_LETTER_CONFIG: LetterCommitterConfig = { minProb: 0.65, stableFrames: 6 }
-
+export const DEFAULT_LETTER_CONFIG: LetterCommitterConfig = {
+  minProb: 0.72, minMargin: 0.18, stableMs: 140, fastMs: 85,
+  fastProb: 0.94, releaseMs: 180, minSamples: 3
+}
 export class LetterCommitter {
-  private candidate: string | null = null
-  private streak = 0
-  private lastCommitted: string | null = null
-
+  private candidate = ''
+  private since = 0
+  private samples = 0
+  private lastCommitted = ''
+  private releaseSince: number | null = null
+  private previousTs = -Infinity
+  private allFast = true
   constructor(private config: LetterCommitterConfig = DEFAULT_LETTER_CONFIG) {}
-
-  /** Feed one per-frame prediction; returns a letter to commit or null. */
-  push(letter: string, prob: number): string | null {
-    if (prob < this.config.minProb) {
-      this.candidate = null
-      this.streak = 0
+  push(letter: string, prob: number, nowMs = performance.now(), margin = 1): string | null {
+    if (nowMs <= this.previousTs) return null
+    if (nowMs - this.previousTs > 300) this.clearCandidate()
+    this.previousTs = nowMs
+    // Static inputs cannot recognize motion letters. Do not invent J or Z.
+    const valid = /^[A-Z]$/.test(letter) || letter === 'space' || letter === 'del'
+    if (!valid || letter === 'J' || letter === 'Z' || !Number.isFinite(prob) ||
+        !Number.isFinite(margin) || prob < this.config.minProb || margin < this.config.minMargin) {
+      this.release(nowMs)
       return null
     }
-
-    if (letter === this.candidate) {
-      this.streak++
-    } else {
-      this.candidate = letter
-      this.streak = 1
-      // Pose broke to something else — allow the previous letter again later.
-      if (letter !== this.lastCommitted) this.lastCommitted = null
+    this.releaseSince = null
+    if (letter !== this.candidate) {
+      this.candidate = letter; this.since = nowMs; this.samples = 0; this.allFast = true
     }
-
-    if (this.streak >= this.config.stableFrames && this.candidate !== this.lastCommitted) {
-      this.lastCommitted = this.candidate
-      return this.candidate
+    this.samples++
+    this.allFast &&= prob >= this.config.fastProb
+    const hold = letter.length > 1 ? 350 : this.allFast ? this.config.fastMs : this.config.stableMs
+    if (this.samples >= this.config.minSamples && nowMs - this.since >= hold && letter !== this.lastCommitted) {
+      this.lastCommitted = letter
+      return letter
     }
     return null
   }
-
-  /** Call when no hand is in frame — breaks the pose for repeat letters. */
-  onHandLost(): void {
-    this.candidate = null
-    this.streak = 0
-    this.lastCommitted = null
+  private clearCandidate(): void { this.candidate = ''; this.samples = 0; this.allFast = true }
+  private release(nowMs: number): void {
+    this.clearCandidate(); this.releaseSince ??= nowMs
+    if (nowMs - this.releaseSince >= this.config.releaseMs) this.lastCommitted = ''
   }
-
+  onHandLost(nowMs = performance.now()): void { this.release(nowMs) }
   reset(): void {
-    this.onHandLost()
+    this.clearCandidate(); this.lastCommitted = ''; this.releaseSince = null; this.previousTs = -Infinity
   }
 }

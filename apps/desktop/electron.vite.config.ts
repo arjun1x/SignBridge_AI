@@ -33,6 +33,7 @@ export default defineConfig({
   },
   renderer: {
     root: 'src',
+    worker: { format: 'es' },
     plugins: [react()],
     // onnxruntime-web's wasm backend dynamically import()s its emscripten glue
     // .mjs at runtime using a path built from env.wasm.wasmPaths. Vite's dep

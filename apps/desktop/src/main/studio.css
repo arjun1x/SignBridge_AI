@@ -1,0 +1,50 @@
+.studio-toolbar { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:14px; margin:24px 0 18px }
+.mode-toggle { display:flex; padding:4px; gap:4px; border:1px solid #344158; border-radius:12px; background:#0c1422 }
+.mode-toggle button { background:transparent; color:#aabbd2; min-height:40px; padding:8px 16px; border-radius:8px }
+.mode-toggle button[aria-pressed=true] { color:#e1f9f3; border-color:#3a5b5c; background:#254340 }
+.mode-toggle button:hover:not(:disabled) { background:#22354e }
+.studio-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(245px,1fr); border:1px solid #2d3d55; border-radius:16px; overflow:hidden; background:#0b1321 }
+.camera-stage { aspect-ratio:4/3; position:relative; min-width:0; background:radial-gradient(ellipse at 45% 50%,#21375865,transparent 70%),#0b1423; isolation:isolate; overflow:hidden }
+.camera-stage:before { content:''; position:absolute; inset:0; z-index:-1; background-image:radial-gradient(#7195bf45 1px,transparent 1px); background-size:22px 22px; opacity:.45 }
+.camera-stage video,.camera-stage canvas { position:absolute; width:100%; height:100%; inset:0; object-fit:contain; transform:scaleX(-1) }
+.camera-stage canvas { pointer-events:none }
+.camera-corners { position:absolute; inset:24px 24px 58px; border:1px solid #769dc030; border-radius:12px; pointer-events:none }
+.camera-label { position:absolute; left:35px; top:35px; font:500 .75rem/1.5 ui-monospace,monospace; color:#aaffdd; background:#09141bdb; padding:6px 10px; border-radius:6px }
+.camera-empty { position:absolute; inset:16px 28px 64px; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center }
+.camera-symbol { width:70px; height:70px; display:grid; place-items:center; border-radius:20px; border:1px solid #4b648478; background:linear-gradient(135deg,#283e5b,#18263d); color:#a9c8ef; box-shadow:0 12px 30px #0003; margin-bottom:22px; transform:rotate(-6deg) }
+.camera-symbol svg { width:44px; height:44px }
+.camera-empty h3 { font-size:1.125rem; letter-spacing:-.025em; margin:0 0 10px }
+.camera-empty p { font-size:.875rem; color:#a7b9d3; line-height:1.7; max-width:290px; margin-bottom:22px }
+.camera-footer { position:absolute; bottom:0; left:0; right:0; min-height:48px; background:#0a1421e6; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 18px; color:#b4c8e0; font-size:.75rem }
+.camera-footer button.stop-button { min-height:32px; background:#493041; color:#ffd1d5; padding:6px 10px; font-size:.75rem; border-color:#7c4d63 }
+.recognition-panel { padding:28px; border-left:1px solid #2d3d55; display:flex; flex-direction:column; justify-content:center; background:radial-gradient(ellipse at 80% 20%,#1b35463b,transparent 60%),#101c2b }
+.recognition-panel > .eyebrow { margin:0 }
+.recognized-label { font-size:clamp(3.5rem,7vw,6rem); font-weight:500; color:var(--brand); letter-spacing:-.055em; line-height:1.3; margin:6px 0; overflow-wrap:anywhere }
+.recognized-label.uncertain { color:#8195b2 }
+.recognition-hint { font-size:.875rem; color:#b7c8df; min-height:44px; margin:0 0 15px }
+.confidence-label { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:.8125rem; color:#b3c4dc }
+.confidence-label strong { color:#d9e6f7; font-weight:500 }
+.recognition-panel meter { display:block; width:100%; height:8px; margin-top:10px; background:#25374e; border-radius:5px; border:0 }
+.recognition-panel meter::-webkit-meter-bar { background:#25374e; border:0; height:7px }
+.recognition-panel meter::-webkit-meter-optimum-value { background:linear-gradient(90deg,#649cda,#8cf0d0); border-radius:5px }
+.confidence-note { margin:9px 0 0; font-size:.75rem }
+.live-metrics { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid #31415a; margin:23px 0 12px; padding-top:18px; gap:12px }
+.live-metrics strong { display:block; font:500 1.6rem/1.2 ui-monospace,monospace; color:#dfebff }
+.live-metrics strong small { font-size:.8125rem; color:#adbfda }
+.live-metrics span { font-size:.75rem; color:#9bb0cb }
+.recognition-panel > .small:last-child { margin:0; font-size:.75rem }
+.sentence-area { margin-top:23px }
+.sentence-title { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between }
+.sentence-title .eyebrow { margin:0 }
+.sentence-title .switch-label { font-size:.8125rem }
+.sentence { font-size:1.35rem; min-height:50px; margin:14px 0; line-height:1.55; overflow-wrap:anywhere }
+.current-word { color:var(--brand); border-bottom:1px solid #67c9b3 }
+.sentence-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:16px }
+.sentence-area > .small { margin:10px 0 }
+.motion-letter-note { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--text-faint); font-size:.8125rem }
+.motion-letter-note button { min-height:36px; min-width:38px; padding:5px 10px }
+.last-spoken { margin:15px 0 0; border-top:1px solid var(--line); padding-top:14px; color:#c6d5e9; font-size:.875rem }
+.last-spoken span { color:var(--text-faint); font-size:.75rem; letter-spacing:.1em; margin-right:10px }
+@media(max-width:1000px) { .studio-grid { grid-template-columns:minmax(0,1.5fr) minmax(220px,1fr) } .recognition-panel { padding:22px } .camera-empty p { font-size:.8125rem; margin-bottom:12px } .camera-symbol { margin-bottom:14px; width:56px; height:56px } .live-metrics { margin-top:16px } }
+@media(max-width:700px) { .studio-grid { grid-template-columns:1fr } .recognition-panel { border-left:0; border-top:1px solid #2d3d55; display:grid; grid-template-columns:1fr 1fr; column-gap:20px } .recognition-panel > .eyebrow { grid-column:1/-1 } .recognized-label { grid-column:1; grid-row:2/5; font-size:4rem } .recognition-hint { grid-column:1; margin:0; font-size:.8125rem } .confidence-label { grid-column:2; grid-row:2; align-self:end } .recognition-panel meter { grid-column:2; grid-row:3 } .confidence-note { grid-column:2; grid-row:4; margin:0 } .live-metrics { grid-column:1/-1; margin:12px 0 } .recognition-panel > .small:last-child { grid-column:1/-1 } .studio-toolbar { align-items:flex-start; margin-top:20px } }
+@media(max-width:420px) { .camera-stage { aspect-ratio:1/1 } .camera-empty { inset:15px 20px 60px } .camera-footer { padding:8px 10px; font-size:.75rem; flex-wrap:wrap } .camera-empty h3 { font-size:1rem } .mode-toggle { width:100% } .mode-toggle button { flex:1; padding:8px } .recognition-panel { padding:16px } }

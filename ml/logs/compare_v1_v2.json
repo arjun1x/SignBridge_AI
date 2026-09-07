@@ -1,0 +1,102 @@
+{
+  "split_kind": "stratified-image-development-only",
+  "test_samples_total": 9246,
+  "models": [
+    {
+      "model": "fingerspell_v1.onnx",
+      "classes_in_model": 28,
+      "classes_scored": 28,
+      "test_samples_scored": 9246,
+      "accuracy": 0.9869,
+      "worst_classes": [
+        [
+          "N",
+          0.9419
+        ],
+        [
+          "M",
+          0.9479
+        ],
+        [
+          "P",
+          0.9732
+        ],
+        [
+          "W",
+          0.978
+        ],
+        [
+          "R",
+          0.9787
+        ]
+      ],
+      "cpu_ms_p50": 0.015,
+      "cpu_ms_p95": 0.0192,
+      "parameters": 89372
+    },
+    {
+      "model": "fingerspell_v2.onnx",
+      "classes_in_model": 28,
+      "classes_scored": 28,
+      "test_samples_scored": 9246,
+      "accuracy": 0.9869,
+      "worst_classes": [
+        [
+          "N",
+          0.936
+        ],
+        [
+          "R",
+          0.9733
+        ],
+        [
+          "M",
+          0.9763
+        ],
+        [
+          "Q",
+          0.9771
+        ],
+        [
+          "W",
+          0.978
+        ]
+      ],
+      "cpu_ms_p50": 0.0147,
+      "cpu_ms_p95": 0.0153,
+      "parameters": 28316
+    },
+    {
+      "model": "fingerspell_v2.onnx",
+      "classes_in_model": 28,
+      "classes_scored": 28,
+      "test_samples_scored": 9246,
+      "accuracy": 0.9904,
+      "worst_classes": [
+        [
+          "N",
+          0.936
+        ],
+        [
+          "M",
+          0.9716
+        ],
+        [
+          "R",
+          0.976
+        ],
+        [
+          "W",
+          0.9807
+        ],
+        [
+          "D",
+          0.9832
+        ]
+      ],
+      "cpu_ms_p50": 0.0177,
+      "cpu_ms_p95": 0.0182,
+      "parameters": 89372
+    }
+  ]
+}

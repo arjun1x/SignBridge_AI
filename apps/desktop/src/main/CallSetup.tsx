@@ -1,195 +1,72 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  getTtsLocalMonitor,
-  getTtsOutputDevice,
-  refreshTtsEngine,
-  setTtsLocalMonitor,
-  setTtsOutputDevice,
-  speak
-} from '../tts/ttsService'
-
-interface OutputDevice {
-  deviceId: string
-  label: string
-}
-
-const CABLE_INPUT_HINT = 'CABLE Input'
-const CABLE_OUTPUT_HINT = 'CABLE Output'
-
-// Call-integration wizard: routes the synthesized voice into VB-Audio
-// Virtual Cable so Discord/Zoom hear it as a microphone. The user installs
-// VB-Cable once, points the call app's mic at "CABLE Output", and picks
-// "CABLE Input" as SignBridge's voice output here.
+import { useEffect, useRef, useState } from 'react'
+import { getTtsLocalMonitor, getTtsOutputDevice, refreshTtsEngine, setTtsLocalMonitor, setTtsOutputDevice, speak } from '../tts/ttsService'
 export function CallSetup() {
-  const [outputs, setOutputs] = useState<OutputDevice[]>([])
-  const [cableDetected, setCableDetected] = useState(false)
+  const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([])
   const [selected, setSelected] = useState(getTtsOutputDevice())
   const [monitor, setMonitor] = useState(getTtsLocalMonitor())
   const [engine, setEngine] = useState<'piper' | 'system'>('system')
-  const [level, setLevel] = useState(0)
-  const [metering, setMetering] = useState(false)
-  const meterCleanup = useRef<(() => void) | null>(null)
-
-  const scanDevices = useCallback(async () => {
-    // Device labels are only exposed after one successful getUserMedia grant.
+  const [error, setError] = useState('')
+  const [level, setLevel] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const cleanup = useRef<(() => void) | null>(null)
+  const alive = useRef(true)
+  const metering = useRef(false)
+  const cableDetected = outputs.some((d) => d.label.includes('CABLE Input'))
+  async function scan(requestPermission = false) {
     try {
-      const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
-      probe.getTracks().forEach((t) => t.stop())
-    } catch {
-      // no mic permission — labels may be empty, detection still attempted
-    }
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    const outs = devices
-      .filter((d) => d.kind === 'audiooutput')
-      .map((d) => ({ deviceId: d.deviceId, label: d.label || d.deviceId }))
-    setOutputs(outs)
-    setCableDetected(outs.some((d) => d.label.includes(CABLE_INPUT_HINT)))
-    setEngine(await refreshTtsEngine())
-  }, [])
-
-  useEffect(() => {
-    scanDevices()
-    return () => meterCleanup.current?.()
-  }, [scanDevices])
-
-  const choose = useCallback((deviceId: string) => {
-    setSelected(deviceId)
-    setTtsOutputDevice(deviceId)
-  }, [])
-
-  const testVoice = useCallback(() => {
-    speak('SignBridge voice test. If your call is set up, the other side hears this.')
-  }, [])
-
-  // Level meter on the CABLE Output mic proves the whole loop end-to-end:
-  // TTS -> CABLE Input -> (virtual wire) -> CABLE Output, which is exactly
-  // what the call app consumes.
-  const toggleMeter = useCallback(async () => {
-    if (metering) {
-      meterCleanup.current?.()
-      return
-    }
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    const cableOut = devices.find((d) => d.kind === 'audioinput' && d.label.includes(CABLE_OUTPUT_HINT))
-    if (!cableOut) return
-
-    // Raw capture: default constraints enable echo cancellation, which
-    // treats our own browser-played TTS as echo and subtracts it — the
-    // meter would show silence exactly when the loop is working.
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: { exact: cableOut.deviceId },
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
+      if (requestPermission) {
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
+        probe.getTracks().forEach((t) => t.stop())
       }
-    })
-    const ctx = new AudioContext()
-    const analyser = ctx.createAnalyser()
-    ctx.createMediaStreamSource(stream).connect(analyser)
-    const buf = new Float32Array(analyser.fftSize)
-    const timer = setInterval(() => {
-      analyser.getFloatTimeDomainData(buf)
-      let peak = 0
-      for (const v of buf) peak = Math.max(peak, Math.abs(v))
-      setLevel(peak)
-    }, 100)
-
-    meterCleanup.current = () => {
-      clearInterval(timer)
-      stream.getTracks().forEach((t) => t.stop())
-      ctx.close()
-      setMetering(false)
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      if (alive.current) setOutputs(devices.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default'))
+      // Engine readiness may take a moment after launch; do not hold the device list on it.
+      const engine = await refreshTtsEngine()
+      if (alive.current) setEngine(engine)
+    } catch (err) { if (alive.current) setError(`Could not scan audio devices: ${String(err)}`) }
+  }
+  useEffect(() => {
+    alive.current = true
+    void scan() // No microphone prompt until the user requests a device scan.
+    const changed = () => void scan()
+    navigator.mediaDevices?.addEventListener('devicechange', changed)
+    return () => { alive.current = false; metering.current = false; cleanup.current?.(); navigator.mediaDevices?.removeEventListener('devicechange', changed) }
+  }, [])
+  async function toggleMeter() {
+    if (level !== null) { cleanup.current?.(); return }
+    setError(''); setBusy(true); metering.current = true
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const cable = devices.find((d) => d.kind === 'audioinput' && d.label.includes('CABLE Output'))
+      if (!cable) throw new Error('No virtual cable input found. Install VB-Cable, then scan devices.')
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: cable.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+      if (!alive.current || !metering.current) { stream.getTracks().forEach((t) => t.stop()); return }
+      const ctx = new AudioContext(); const analyser = ctx.createAnalyser()
+      ctx.createMediaStreamSource(stream).connect(analyser)
+      const data = new Float32Array(analyser.fftSize)
+      const timer = setInterval(() => { analyser.getFloatTimeDomainData(data); setLevel(Math.max(...Array.from(data, Math.abs))) }, 100)
+      cleanup.current = () => {
+        clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); void ctx.close()
+        if (alive.current) setLevel(null)
+        cleanup.current = null; metering.current = false
+      }
       setLevel(0)
-      meterCleanup.current = null
-    }
-    setMetering(true)
-  }, [metering])
-
-  return (
-    <section className="card">
-      <h2>Call integration</h2>
-      <p className="card-desc">
-        Sends the voice into Discord or Zoom, so the other side hears your signing as
-        speech.
-      </p>
-
-      {!cableDetected ? (
-        <>
-          <p className="muted">
-            One-time setup: install the free virtual audio cable, reboot, then rescan.
-          </p>
-          <div className="row">
-            <button onClick={() => window.open('https://vb-audio.com/Cable/', '_blank')}>
-              Get the virtual cable
-            </button>
-            <button className="secondary" onClick={scanDevices}>
-              Rescan devices
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              value={selected}
-              onChange={(e) => choose(e.target.value)}
-              title={outputs.find((d) => d.deviceId === selected)?.label ?? 'System default'}
-            >
-              <option value="default">This computer's speakers</option>
-              {outputs.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {friendlyDeviceName(d.label)}
-                </option>
-              ))}
-            </select>
-            <button onClick={testVoice}>Test voice</button>
-            <button className="secondary" onClick={toggleMeter}>
-              {metering ? 'Stop test meter' : 'Check the connection'}
-            </button>
-            {metering && (
-              <span className="level-meter">
-                <span className="level-fill" style={{ width: `${Math.min(100, level * 140)}%` }} />
-              </span>
-            )}
-          </div>
-          <label className="switch-label" style={{ marginTop: 12 }}>
-            <input
-              type="checkbox"
-              className="switch"
-              checked={monitor}
-              onChange={(e) => {
-                setMonitor(e.target.checked)
-                setTtsLocalMonitor(e.target.checked)
-              }}
-            />
-            Play a quiet copy on my speakers so I know when it speaks
-          </label>
-          <p className="small" style={{ marginTop: 10 }}>
-            In your call app, set the microphone to <b>CABLE Output</b>. Voice engine:{' '}
-            {engine === 'piper' ? 'neural (routable)' : 'system'}
-          </p>
-        </>
-      )}
-
-      {!cableDetected && (
-        <p className="small" style={{ marginTop: 8 }}>
-          Voice engine:{' '}
-          {engine === 'piper'
-            ? 'neural (routable)'
-            : 'system — run "npm run download:tts" for the routable neural voice'}
-        </p>
-      )}
-    </section>
-  )
-}
-
-// "CABLE Input (VB-Audio Virtual Cable)" is meaningless to end users — show
-// intent-based names, keep the technical name in the select's tooltip.
-function friendlyDeviceName(label: string): string {
-  if (label.startsWith('CABLE Input')) return 'Virtual cable → your call (recommended)'
-  if (label.startsWith('CABLE In 16ch')) return 'Virtual cable, 16-channel'
-  const vendor = label.match(/^(.*?)\s*\((.*)\)$/)
-  if (vendor) return `${vendor[1]} — ${vendor[2].replace(/\(R\)/g, '')}`
-  return label
+    } catch (err) { if (alive.current) setError(String(err)) }
+    finally { if (alive.current) setBusy(false) }
+  }
+  return <section className="card" aria-labelledby="call-title">
+    <div className="section-heading"><div><p className="eyebrow">03 / BRING YOUR VOICE ALONG</p><h2 id="call-title">Connect to your call.</h2></div></div>
+    <p className="card-desc">Choose where your spoken words go. Use a virtual cable to send them into Discord or Zoom.</p>
+    {error && <p className="warn" role="alert">{error}</p>}
+    <label className="small" htmlFor="voice-output">Voice output</label>
+    <select id="voice-output" value={selected} onChange={(e) => { setSelected(e.target.value); setTtsOutputDevice(e.target.value) }}>
+      <option value="default">This computer's speakers</option>
+      {outputs.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label.startsWith('CABLE Input') ? 'Virtual cable → your call' : d.label || 'Audio output'}</option>)}
+    </select>
+    <div className="row"><button className="secondary" onClick={() => speak('Hello from SignBridge. This is a voice test.')}>Test voice</button><button className="text-button" onClick={() => void scan(true)}>Scan devices</button></div>
+    <label className="switch-label"><input type="checkbox" className="switch" checked={monitor} onChange={(e) => { setMonitor(e.target.checked); setTtsLocalMonitor(e.target.checked) }} />Also play a quiet copy on my speakers</label>
+    <div className="row"><span className="pill">{engine === 'piper' ? 'Neural voice ready' : 'System voice'}</span></div>
+    {engine !== 'piper' && <p className="small">Install the local neural voice to route speech into a call. The system voice uses your default speakers.</p>}
+    {cableDetected ? <><p className="small">In your call app, choose <b>CABLE Output</b> as the microphone.</p><button className="secondary" onClick={toggleMeter} disabled={busy}>{busy ? 'Connecting…' : level === null ? 'Check connection' : 'Stop connection check'}</button>{level !== null && <div className="row"><meter min={0} max={1} value={level} aria-label="Virtual cable audio level" /><span className="small">{Math.round(level * 100)}% peak</span></div>}</> : <p className="small">First time connecting? <a href="https://vb-audio.com/Cable/" target="_blank" rel="noreferrer" style={{ color:'var(--brand)', textDecoration:'underline' }}>Install VB-Cable</a>, restart your PC, and scan again.</p>}
+  </section>
 }

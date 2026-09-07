@@ -1,92 +1,122 @@
 # SignBridge AI
 
-**A real-time, two-way accessibility layer for video calls.** SignBridge runs
-alongside Discord/Zoom and bridges both directions of a conversation between
-a deaf signer and hearing participants:
+A local desktop signing studio for fingerspelling, supported isolated ASL signs,
+spoken output, and live captions over video calls.
 
-- **Sign → Speech:** webcam → MediaPipe Holistic landmarks → a Transformer
-  sign classifier (trained on 94k sequences, 250 ASL signs, 74% top-1 / 91%
-  top-5) → debounced glosses → sentence assembly → a neural voice (Piper)
-  spoken **into the call as your microphone** via VB-Audio Virtual Cable.
-- **Speech → Captions:** Windows loopback audio → streaming Zipformer STT
-  (sherpa-onnx, ~20× real-time on CPU) → live captions in a transparent,
-  click-through, always-on-top overlay above the call window.
+This updated source package introduces a responsive interface, an interactive 3D
+welcome scene, a worker-based vision pipeline, and improved training tooling. Start
+with [START_HERE.md](START_HERE.md) for the Claude Code handoff.
 
-Plus **fingerspelling mode**: spell any word letter-by-letter with the ASL
-alphabet (98% letter accuracy), with `space`/`delete` gestures for editing —
-so vocabulary is never a hard limit.
+## Start on Windows
 
-Everything runs **locally** — no cloud APIs, no audio or video ever leaves
-the machine.
-
-## Architecture
-
-```
-┌────────────────────────── Electron ──────────────────────────┐
-│  Renderer (React 19, cross-origin isolated)                  │
-│   webcam → HolisticLandmarker (WASM/GPU) → feature extract   │
-│   → ONNX Web Worker (onnxruntime-web WebGPU/WASM)            │
-│   → gloss debounce → sentence assembly → TTS routing         │
-│   loopback capture → AudioWorklet 16k PCM ─┐                 │
-│                                     MessagePort (direct)     │
-│  Utility process (Node)                    ▼                 │
-│   sherpa-onnx streaming STT  ◄─────────────┘                 │
-│   sherpa-onnx Piper TTS → PCM → renderer → setSinkId(cable)  │
-│  Overlay window: transparent/click-through captions          │
-└──────────────────────────────────────────────────────────────┘
-        ml/ (Python, uv): GISLR download → preprocess → train
-        (PyTorch cu128) → ONNX export with parity gate → app
-```
-
-The train/runtime contract lives in `shared/feature_spec.json`: the exact
-landmark subset and normalization are implemented twice (Python for
-training, TypeScript for the live pipeline) and **fixture-tested for
-equality to 1e-6** — the TS implementation is executed via esbuild inside
-the Python test suite. Exported models carry hashes of the feature spec and
-label map so a drifted model refuses to load.
-
-## Try it
+Use Node 20+ and the npm lockfile. In the project root:
 
 ```powershell
-npm install                 # also copies ORT/MediaPipe wasm assets
-npm run download:stt        # streaming STT model (~300 MB)
-npm run download:tts        # Piper voice (~65 MB)
-npm run download:mediapipe  # HolisticLandmarker (~13 MB)
+npm ci
+npm run download:mediapipe
+npm run download:stt
+npm run download:tts
+```
+
+The MediaPipe downloader fetches both the hand-only tracker and the holistic tracker.
+STT/TTS downloads are needed for desktop captions and routable neural voice output.
+The `postinstall` script copies local ONNX Runtime and MediaPipe module-worker assets.
+
+Install your existing trained recognition model(s). Keep each weight file together
+with its matching metadata and labels:
+
+```powershell
+# models/fingerspell_v1.onnx and its original metadata must exist first.
+node scripts/sync-model-to-app.mjs fingerspell_v1
+
+# Optional whole-sign model; also requires shared/labels_gislr.json.
+node scripts/sync-model-to-app.mjs signs_v1
+
 npm run dev
 ```
 
-Sign-recognition models: train your own with the runbook in
-[`ml/README.md`](ml/README.md) (Kaggle GISLR + ASL-alphabet datasets), or
-drop prebuilt `signs_v1.onnx` / `fingerspell_v1.onnx` into
-`apps/desktop/src/public/models/`.
+The repository does not contain the recognition weights. A missing model produces an
+explicit setup message. Random/untrained models are never used to generate speech.
+Fingerspelling works independently of the whole-sign model once its own assets exist.
 
-For call integration, install the free
-[VB-Audio Virtual Cable](https://vb-audio.com/Cable/), then follow the
-in-app **Call Integration** wizard (device pick, test voice, level meter).
-Set the call app's microphone to `CABLE Output`.
+## Using the studio
 
-**Google sign-in (optional):** the welcome screen offers "Continue with
-Google" (OAuth 2.0 PKCE via the system browser) purely for personalization —
-there is no backend, and guest mode is fully featured. To enable it, create
-a free OAuth client (type *Desktop app*) at Google Cloud Console →
-Credentials, and save `apps/desktop/resources/google-oauth.json`:
-`{"clientId": "...", "clientSecret": "..."}`.
+- Open as a guest, then select Fingerspell or ASL signs and start the camera.
+- Use even lighting and keep your hand visible. In whole-sign mode include your upper body.
+- Hold a confident letter briefly to add it. For a repeated letter, briefly relax the
+  pose or remove the hand. A sustained hands-away pause completes the word.
+- Use Add space, Backspace, Clear, and Speak aloud. Auto-speak is optional and starts off.
+- J and Z require movement: the current static classifier will not auto-commit them.
+  Use the manual J/Z buttons until a trained temporal recognizer is available.
+- Captions listen to system audio in the Windows desktop app. Call setup lets you
+  select a voice output and test the connection. For VB-Cable, choose CABLE Input as
+  SignBridge output and CABLE Output as the call app microphone.
+- Recognition confidence is a model score, not a guarantee of correctness. Review words.
 
-## Honest limitations
+Google sign-in remains optional. Configure the existing desktop OAuth flow through
+`apps/desktop/resources/google-oauth.json` with your own desktop OAuth client. Guest
+mode needs no account. Recognition pixels and features stay local; sign-in and initial
+asset downloads use the network. System captions/voice still rely on the original
+Electron/sherpa integration.
 
-- **Gloss order ≠ English grammar.** Sentences are joined recognized
-  glosses ("store go me"), not translated ASL grammar. Real ASL translation
-  is an open research problem; a post-hoc LLM cleanup pass is a natural
-  extension.
-- **250-sign vocabulary** (the GISLR label set) for whole-sign recognition;
-  fingerspelling covers everything else at letter speed.
-- **J and Z** involve motion; the letter classifier sees static poses, so
-  they're unreliable.
-- Webcam domain differs from the training distribution; accuracy in the
-  wild is below the 74% validation number. Augmentation narrows the gap.
+## Architecture
 
-## Stack
+The React renderer captures a fresh video frame only when the recognition worker is
+ready. The worker receives one transferred ImageBitmap at a time, runs MediaPipe,
+normalizes landmarks, and classifies with ONNX Runtime. It closes each bitmap and
+returns landmarks, predictions, and timings. Old workers cannot write into a new mode.
 
-Electron + React 19 + electron-vite · MediaPipe Tasks (Holistic + Hands) ·
-onnxruntime-web (WebGPU/WASM) · sherpa-onnx (streaming Zipformer STT, Piper
-TTS) · PyTorch 2.11 cu128 · trained on an RTX 5060 (Blackwell sm_120).
+Fingerspelling uses HandLandmarker plus a per-hand MLP. Whole signs retain the original
+64-frame, 184-feature contract and use HolisticLandmarker with the Transformer. Signs
+are evaluated at most every 125 ms; this does not mean a complete sign can be recognized
+in 125 ms. Static letters use 85/140 ms minimum evidence holds and at least three
+observations; these are tuning constants, not measured latency promises.
+
+The 3D hand is built from Three.js geometry, loaded only for the welcome screen. It
+caps rendering at about 30 fps and pixel ratio 1.5, pauses while hidden/offscreen, and
+is disposed when the studio opens. Reduced-motion/static rendering and a logo fallback
+are provided. No external textures or CDN requests are needed.
+
+Feature normalization remains unchanged across Python and TypeScript. Model loading
+validates spec hashes, label maps, feature dimensions, and calibration metadata.
+
+## Training
+
+See [ml/README.md](ml/README.md). The fingerspelling trainer now provides:
+
+- Optional real signer/session groups, train/validation/test splits, and class coverage checks.
+- Compact configurable MLP, balanced sampling, restrained landmark augmentation,
+  early stopping and compatible-checkpoint fine-tuning.
+- Validation-only temperature calibration, untouched test evaluation, per-class metrics,
+  confusion matrix, and a clearly scoped classifier-only CPU benchmark.
+- ONNX parity verification and model-specific label files/checksums.
+
+The new training recipe has not yet been compared with your existing weights on real
+data. Historical metadata records ~98.0% image-split fingerspelling accuracy and ~74.0%
+GISLR validation accuracy; these are previous results, not new measurements or webcam
+accuracy guarantees. The welcome screen no longer advertises them as product accuracy.
+
+## Check the source
+
+```powershell
+npm run check
+cd ml
+uv run pytest tests/
+```
+
+`npm run check` runs TypeScript, runtime behavior tests, and the Electron production
+build. The ML suite covers preprocessing, augmentation, Python/TypeScript parity,
+model forward/export behavior, group splits, and a temporary synthetic training smoke
+test. It does not establish real ASL accuracy.
+
+## Limits and handoff
+
+This recognizes isolated signs and deliberately held letters. Joining glosses is not
+translation of ASL syntax; fluent continuous fingerspelling, coarticulation, and J/Z
+motion need temporal data and a validated sequence decoder. Actual webcam results may
+differ with signer, camera, framing and lighting.
+
+[UPDATE_REPORT.md](UPDATE_REPORT.md) records changes and validation limits.
+[CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md) gives merge, real-data training and target-PC checks.
+The older PROJECT_REPORT.md and RESUME.md are preserved as historical documents and
+must not be used as measurements of this version.

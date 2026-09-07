@@ -1,0 +1,19 @@
+{
+  "onnx_file": "fingerspell_v2.onnx",
+  "labels_file": "fingerspell_v2.labels.json",
+  "labels_sha256": "3dae680e8a898b20a02a9ca338c9e56e2ddae4fe2b09c0637fd90ea78ea4b33d",
+  "fingerspell_spec_sha256": "3bfefee2086ce5f8f8291fac2720a727b29147b0ff125ad30e92b71439de970a",
+  "num_classes": 28,
+  "feature_dim": 63,
+  "val_acc": 0.9895089768548562,
+  "temperature": 0.6796781954392628,
+  "test_acc": 0.990374215877136,
+  "test_macro_f1": 0.9889230994793793,
+  "split_kind": "stratified-image-development-only",
+  "unsupported_motion_letters": [
+    "J",
+    "Z"
+  ],
+  "parameter_count": 89372,
+  "onnx_pytorch_max_diff": 3.814697265625e-06
+}

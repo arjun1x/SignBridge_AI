@@ -13,12 +13,14 @@
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",
     "onnxruntime-web": "^1.27.0",
-    "sherpa-onnx-node": "^1.11.0"
+    "sherpa-onnx-node": "^1.11.0",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^37.0.0",
     "electron-builder": "^26.15.3",

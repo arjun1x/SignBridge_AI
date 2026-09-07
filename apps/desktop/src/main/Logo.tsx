@@ -2,7 +2,10 @@
 // With `animated`, the hand waves and the sound waves pulse outward (CSS
 // classes defined in styles.css; transform-box: fill-box scopes transforms
 // to each SVG group).
+import { useId } from 'react'
+
 export function Logo({ className, animated = false }: { className?: string; animated?: boolean }) {
+  const gradientId = useId()
   return (
     <svg
       className={`${className ?? ''} ${animated ? 'logo-animated' : ''}`}
@@ -10,12 +13,12 @@ export function Logo({ className, animated = false }: { className?: string; anim
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#2b6cf0" />
           <stop offset="1" stopColor="#153a8f" />
         </linearGradient>
       </defs>
-      <rect width="512" height="512" rx="104" fill="url(#lg)" />
+      <rect width="512" height="512" rx="104" fill={`url(#${gradientId})`} />
       <g className="logo-hand" fill="#ffffff">
         <rect x="150" y="128" width="34" height="150" rx="17" />
         <rect x="196" y="96" width="34" height="182" rx="17" />

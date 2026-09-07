@@ -1,37 +1,18 @@
-// Orchestrates the Direction-1 pipeline: webcam -> HolisticLandmarker ->
-// feature extraction -> motion gate -> sign-recognition worker -> gloss
-// debounce -> sentence assembly. Two recognition modes share the webcam,
-// landmarker, worker, assembler and TTS chain:
-//   'signs'       — 250-word GISLR classifier over 64-frame windows
-//   'fingerspell' — per-frame letter classifier; letters build a word,
-//                   'space' commits it to the sentence buffer, 'del' erases
-// Mirrors the style of capture/audioCapture.ts (module-level state, explicit
-// start/stop), not a React hook, so it's easy to drive from tests/CDP too.
-import { closeLandmarker, detectFrame, initLandmarker } from './landmarker'
-import { extractFrameFeatures, FRAME_FEATURE_DIM } from './features'
-import { normalizeHand } from './fingerspellFeatures'
-import { SignGate } from '../inference/gating'
-import { DebounceConfig, DEFAULT_DEBOUNCE, GlossDebouncer } from '../inference/debounce'
+import { GlossDebouncer, DEFAULT_DEBOUNCE, type DebounceConfig } from '../inference/debounce'
 import { LetterCommitter } from '../inference/letterCommitter'
 import { SentenceAssembler } from '../nlp/sentenceAssembler'
 import SignWorker from '../inference/signWorker?worker'
-
-export type SignMode = 'signs' | 'fingerspell'
+import type { ModelInfo, SignMode, WorkerReply, WorkerRequest, Prediction } from '../inference/protocol'
+export type { ModelInfo, SignMode } from '../inference/protocol'
+export { FRAME_FEATURE_DIM } from './features'
 
 export interface SignPipelineStatus {
-  handsPresent: boolean
-  motionEnergy: number
-  isResting: boolean
-  fps: number
+  handsPresent: boolean; motionEnergy: number; isResting: boolean; fps: number
+  latencyMs: number; landmarkMs: number; inferenceMs: number; skippedFrames: number; backend: string
 }
-
-export interface ModelInfo {
-  name: string
-  valAcc: number | null
-  /** True when running the untrained placeholder with loosened thresholds. */
-  testMode: boolean
+export interface FingerspellState {
+  letter: string; prob: number; word: string; available: boolean; uncertain: boolean
 }
-
 export interface SignPipelineCallbacks {
   onStatus?: (s: SignPipelineStatus) => void
   onPrediction?: (p: { gloss: string; prob: number; ts: number }) => void
@@ -39,271 +20,242 @@ export interface SignPipelineCallbacks {
   onSentence?: (sentence: string) => void
   onError?: (message: string) => void
   onReady?: (model: ModelInfo) => void
-  /** Fingerspell mode: live letter prediction + the word being spelled. */
-  onFingerspell?: (s: { letter: string; prob: number; word: string; available: boolean }) => void
+  onState?: (state: 'idle' | 'loading' | 'running') => void
+  onFingerspell?: (s: FingerspellState) => void
+  onLandmarks?: (hands: number[][]) => void
 }
-
 export interface SignPipelineOptions {
-  debounce?: DebounceConfig
-  autoSpeak?: boolean
-  autoSpeakAfterMs?: number
+  debounce?: DebounceConfig; autoSpeak?: boolean; autoSpeakAfterMs?: number; mode?: SignMode
 }
+let active: Pipeline | null = null
+let selectedMode: SignMode = 'fingerspell'
 
-let mediaStream: MediaStream | null = null
-let worker: Worker | null = null
-let gate: SignGate | null = null
-let debouncer: GlossDebouncer | null = null
-let assembler: SentenceAssembler | null = null
-let rafHandle: number | null = null
-let running = false
-
-let mode: SignMode = 'signs'
-let letterCommitter: LetterCommitter | null = null
-let fsAvailable = false
-let currentWord = ''
-let fsCallbacks: SignPipelineCallbacks | null = null
-
-function emitFingerspell(letter: string, prob: number): void {
-  fsCallbacks?.onFingerspell?.({ letter, prob, word: currentWord, available: fsAvailable })
-}
-
-// Preference order: the real trained model if it's been exported + synced
-// (scripts/sync-model-to-app.mjs signs_v1), else the untrained placeholder.
-const MODEL_CANDIDATES = ['signs_v1', 'signs_dummy']
-
-// Loose thresholds for the placeholder, whose top-1 probability hovers near
-// 1/250 — the real thresholds would (correctly) never fire on it.
-const TEST_MODE_DEBOUNCE: DebounceConfig = { minProb: 0.004, minConsecutive: 2 }
-
-async function resolveModel(): Promise<{ base: string; name: string; valAcc: number | null }> {
-  for (const name of MODEL_CANDIDATES) {
-    const res = await fetch(`/models/${name}.meta.json`).catch(() => null)
-    if (res?.ok) {
-      const meta = await res.json()
-      return { base: `/models/${name}`, name, valAcc: meta.val_acc ?? null }
-    }
+async function resolveModel(mode: SignMode): Promise<{ base: string; labelsUrl: string }> {
+  const names = mode === 'fingerspell' ? ['fingerspell_v2', 'fingerspell_v1'] : ['signs_v2', 'signs_v1']
+  for (const name of names) {
+    const response = await fetch(`/models/${name}.meta.json`).catch(() => null)
+    if (!response?.ok) continue
+    let meta: Record<string, unknown>
+    try { meta = await response.json() } catch { continue } // dev-server HTML fallback is not metadata
+    if (meta.val_acc == null) continue
+    const labelFile = typeof meta.labels_file === 'string' && /^[\w.-]+\.json$/.test(meta.labels_file)
+      ? meta.labels_file : mode === 'fingerspell' ? 'labels_fingerspell.json' : 'labels.json'
+    return { base: `/models/${name}`, labelsUrl: `/models/${labelFile}` }
   }
-  throw new Error('No sign model found in /models/ — run scripts/sync-model-to-app.mjs')
+  throw new Error(`The ${mode === 'fingerspell' ? 'fingerspelling' : 'sign'} model is not installed. Sync a trained ONNX model using the setup guide, then try again.`)
 }
 
-export async function startSignPipeline(
-  video: HTMLVideoElement,
-  callbacks: SignPipelineCallbacks,
-  options: SignPipelineOptions = {}
-): Promise<void> {
-  if (running) return
-  running = true
-  gate = new SignGate()
-  letterCommitter = new LetterCommitter()
-  currentWord = ''
-  fsCallbacks = callbacks
-
-  try {
-    const model = await resolveModel()
-    // Untrained placeholder (val_acc null) -> loose thresholds so the chain
-    // can still be exercised; real model -> real thresholds.
-    const testMode = model.valAcc === null
-    debouncer = new GlossDebouncer(options.debounce ?? (testMode ? TEST_MODE_DEBOUNCE : DEFAULT_DEBOUNCE))
-    assembler = new SentenceAssembler(
-      {
-        onBufferChange: (glosses) => callbacks.onGlossBuffer?.(glosses),
-        onSentence: (sentence) => callbacks.onSentence?.(sentence)
-      },
-      options.autoSpeak ?? true,
-      options.autoSpeakAfterMs ?? 2000
-    )
-
-    await initLandmarker()
-
-    worker = new SignWorker()
-    worker.onmessage = (e: MessageEvent) => {
-      const msg = e.data
-      if (msg.type === 'ready') callbacks.onReady?.({ name: model.name, valAcc: model.valAcc, testMode })
-      else if (msg.type === 'fs-ready') {
-        fsAvailable = true
-        emitFingerspell('', 0)
-      } else if (msg.type === 'prediction') {
-        callbacks.onPrediction?.(msg)
-        const gloss = debouncer?.push(msg)
-        if (gloss) assembler?.addGloss(gloss)
-      } else if (msg.type === 'fs-prediction') {
-        handleLetterPrediction(msg.letter, msg.prob)
-      } else if (msg.type === 'error') callbacks.onError?.(msg.message)
-    }
-    worker.postMessage({
-      type: 'load',
-      modelUrl: `${model.base}.onnx`,
-      metaUrl: `${model.base}.meta.json`,
-      labelsUrl: '/models/labels.json'
-    })
-
-    // Fingerspell model is optional — load it if it's been trained + synced.
-    const fsMeta = await fetch('/models/fingerspell_v1.meta.json').catch(() => null)
-    if (fsMeta?.ok) {
-      worker.postMessage({
-        type: 'load-fs',
-        modelUrl: '/models/fingerspell_v1.onnx',
-        labelsUrl: '/models/labels_fingerspell.json'
+class Pipeline {
+  private stopped = false
+  private stream: MediaStream | null = null
+  private worker: Worker | null = null
+  private cancelLoad: (() => void) | null = null
+  private frameHandle: number | null = null
+  private usingVideoCallback = false
+  private inFlight = false
+  private ready = false
+  private version = 0
+  private lastVideoTime = -1
+  private lastSent = -Infinity
+  private frameStarted = 0
+  private skipped = 0
+  private frames = 0
+  private fps = 0
+  private fpsStart = performance.now()
+  private lastUi = -Infinity
+  private backend = ''
+  private absentSince: number | null = null
+  private committer = new LetterCommitter()
+  private debouncer: GlossDebouncer
+  private assembler: SentenceAssembler
+  private word = ''
+  private lastLetter: Prediction | undefined
+  constructor(private video: HTMLVideoElement, private cb: SignPipelineCallbacks,
+    private options: SignPipelineOptions, private mode: SignMode) {
+    this.debouncer = new GlossDebouncer(options.debounce ?? DEFAULT_DEBOUNCE)
+    this.assembler = new SentenceAssembler({ onBufferChange: (g) => cb.onGlossBuffer?.(g),
+      onSentence: (s) => cb.onSentence?.(s) }, options.autoSpeak ?? false, options.autoSpeakAfterMs ?? 1600)
+  }
+  async start(): Promise<boolean> {
+    this.cb.onState?.('loading')
+    try {
+      await this.load(this.mode)
+      if (this.stopped) return false
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 30, max: 30 }, facingMode: 'user' }, audio: false
       })
+      if (this.stopped) { stream.getTracks().forEach((t) => t.stop()); return false }
+      this.stream = stream; this.video.srcObject = stream
+      await this.video.play()
+      if (this.stopped) return false
+      stream.getVideoTracks()[0].addEventListener('ended', this.cameraEnded)
+      document.addEventListener('visibilitychange', this.visibilityChanged)
+      this.cb.onState?.('running'); this.schedule()
+      return true
+    } catch (err) {
+      if (!this.stopped) { this.cb.onError?.(String(err)); this.stop() }
+      return false
     }
-
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480 },
-      audio: false
-    })
-    video.srcObject = mediaStream
-    await video.play()
-
-    let frameCount = 0
-    let fpsWindowStart = performance.now()
-    let fps = 0
-
-    const debug = {
-      loopTicks: 0,
-      framesWithLandmarks: 0,
-      lastLoopError: '',
-      videoWidth: video.videoWidth,
-      videoHeight: video.videoHeight
-    }
-    ;(window as unknown as { __signDebug: typeof debug }).__signDebug = debug
-
-    const loop = (): void => {
-      if (!running) return
-      debug.loopTicks++
-      debug.videoWidth = video.videoWidth
-      debug.videoHeight = video.videoHeight
-      try {
-        const now = performance.now()
-        const frame = detectFrame(video, now)
-        if (frame) {
-          debug.framesWithLandmarks++
-          const features = extractFrameFeatures(frame)
-          const g = gate!.update(features, now)
-          callbacks.onStatus?.({ ...g, fps })
-          if (g.justEnteredRest) debouncer?.onRest()
-          if (g.justEnteredRest && mode === 'fingerspell') commitPendingWord()
-          assembler?.updateRest(g.isResting, now)
-
-          if (mode === 'signs') {
-            // No transfer list: SignGate holds onto `features` as prevFeatures
-            // for next-frame motion diffing, and transferring would detach its
-            // buffer. The array is tiny (184 floats), cloning costs nothing.
-            worker?.postMessage({ type: 'frame', features, hasHands: g.handsPresent })
-          } else if (fsAvailable) {
-            // Pick the active hand (right preferred), canonicalize, classify.
-            const rightPresent = !Number.isNaN(frame.rightHand[0])
-            const leftPresent = !Number.isNaN(frame.leftHand[0])
-            if (rightPresent || leftPresent) {
-              const hand = rightPresent ? frame.rightHand : frame.leftHand
-              const normalized = normalizeHand(hand, !rightPresent)
-              worker?.postMessage({ type: 'hand', features: normalized })
-            } else {
-              letterCommitter?.onHandLost()
-            }
-          }
+  }
+  private cameraEnded = (): void => { this.cb.onError?.('Camera disconnected. Reconnect it and try again.'); this.stop() }
+  private visibilityChanged = (): void => {
+    this.committer.reset(); this.debouncer.reset(); this.lastLetter = undefined
+    this.absentSince = null; this.assembler.updateRest(false, performance.now())
+    this.cb.onLandmarks?.([]); this.emitLetter()
+  }
+  private async load(mode: SignMode): Promise<void> {
+    this.ready = false; this.inFlight = false; this.version++
+    this.cancelLoad?.(); this.worker?.terminate(); this.worker = null
+    const version = this.version
+    const model = await resolveModel(mode)
+    if (this.stopped || version !== this.version) throw new Error('Recognition start cancelled')
+    const worker = new SignWorker(); this.worker = worker
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Model loading timed out. Check the model files and restart.')), 60000)
+      const cancel = () => { clearTimeout(timer); reject(new Error('Recognition start cancelled')) }
+      this.cancelLoad = cancel
+      worker.onerror = (event) => {
+        clearTimeout(timer)
+        if (!this.ready) reject(new Error(event.message || 'Recognition worker failed'))
+        else { this.cb.onError?.(event.message || 'Recognition worker failed'); this.stop() }
+      }
+      worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+        if (this.stopped || this.worker !== worker) return
+        const msg = event.data
+        if (msg.type === 'ready') {
+          clearTimeout(timer); this.cancelLoad = null; this.ready = true
+          this.backend = msg.backend; this.cb.onReady?.(msg.model); this.emitLetter(); resolve()
+        } else if (msg.type === 'error') {
+          clearTimeout(timer)
+          if (!this.ready) reject(new Error(msg.message))
+          else { this.cb.onError?.(msg.message); this.stop() }
+        } else {
+          this.inFlight = false
+          if (!document.hidden) this.receive(msg)
         }
-      } catch (err) {
-        debug.lastLoopError = String(err)
       }
-
-      frameCount++
-      const now = performance.now()
-      if (now - fpsWindowStart >= 1000) {
-        fps = frameCount / ((now - fpsWindowStart) / 1000)
-        frameCount = 0
-        fpsWindowStart = now
-      }
-
-      rafHandle = requestAnimationFrame(loop)
+      const request: WorkerRequest = { type: 'load', mode, ...model }
+      worker.postMessage(request)
+    })
+  }
+  async switchMode(mode: SignMode): Promise<boolean> {
+    if (mode === this.mode || this.stopped) return !this.stopped
+    this.commitWord(); this.mode = mode; this.committer.reset(); this.debouncer.reset()
+    this.lastLetter = undefined; this.absentSince = null; this.cb.onLandmarks?.([])
+    this.assembler.updateRest(false, performance.now()); this.cb.onState?.('loading')
+    try { await this.load(mode); if (this.stopped) return false; this.cb.onState?.('running'); return true }
+    catch (err) { if (!this.stopped) this.cb.onError?.(String(err)); this.stop(); return false }
+  }
+  private schedule = (): void => {
+    if (this.stopped) return
+    if ('requestVideoFrameCallback' in this.video) {
+      this.usingVideoCallback = true
+      this.frameHandle = this.video.requestVideoFrameCallback(this.tick)
+    } else this.frameHandle = requestAnimationFrame(this.tick)
+  }
+  private tick = (): void => {
+    this.schedule()
+    const now = performance.now()
+    if (this.inFlight && now - this.frameStarted > 10000) {
+      this.cb.onError?.('Recognition stopped responding. Restart the camera.'); this.stop(); return
     }
-    rafHandle = requestAnimationFrame(loop)
-  } catch (err) {
-    running = false
-    callbacks.onError?.(String(err))
-    stopSignPipeline()
+    if (!this.ready || document.hidden || this.video.readyState < 2 || this.video.currentTime === this.lastVideoTime) return
+    this.lastVideoTime = this.video.currentTime
+    if (this.inFlight || now - this.lastSent < 30) { this.skipped++; return }
+    const version = this.version
+    this.inFlight = true; this.frameStarted = now; this.lastSent = now
+    void createImageBitmap(this.video).then((bitmap) => {
+      if (this.stopped || version !== this.version || !this.worker) { bitmap.close(); return }
+      const msg: WorkerRequest = { type: 'frame', bitmap, capturedAt: now }
+      this.worker.postMessage(msg, [bitmap])
+    }).catch((err) => {
+      if (!this.stopped && version === this.version) { this.cb.onError?.(String(err)); this.stop() }
+    })
+  }
+  private receive(msg: Extract<WorkerReply, { type: 'frame' }>): void {
+    const now = performance.now()
+    this.frames++
+    if (now - this.fpsStart >= 1000) { this.fps = this.frames * 1000 / (now - this.fpsStart); this.frames = 0; this.fpsStart = now }
+    // Never let a stalled frame append old text after a newer pose/pause.
+    if (now - msg.capturedAt > 500) {
+      this.committer.reset(); this.debouncer.reset(); this.lastLetter = undefined
+      this.absentSince = null; this.assembler.updateRest(false, now)
+      this.cb.onLandmarks?.([]); this.emitLetter(); return
+    }
+    if (!msg.handsPresent) this.absentSince ??= msg.capturedAt
+    else this.absentSince = null
+    const handsAway = this.absentSince !== null && msg.capturedAt - this.absentSince >= 700
+    if (handsAway) { this.commitWord(); this.debouncer.onRest() }
+    if (this.mode === 'fingerspell') {
+      this.lastLetter = msg.prediction
+      if (!msg.handsPresent) this.committer.onHandLost(msg.capturedAt)
+      if (msg.prediction) {
+        const p = msg.prediction
+        const letter = this.committer.push(p.label, p.prob, p.ts, p.margin)
+        if (letter === 'space') this.commitWord()
+        else if (letter === 'del') this.backspace()
+        else if (letter) { this.word += letter.toLowerCase(); this.emitLetter() }
+      }
+    } else if (msg.prediction) {
+      const p = msg.prediction
+      this.cb.onPrediction?.({ gloss: p.label, prob: p.prob, ts: p.ts })
+      const gloss = this.debouncer.push({ gloss: p.label, prob: p.prob, ts: p.ts })
+      if (gloss) this.assembler.addGloss(gloss)
+    }
+    // A held letter is NOT a word boundary. Only hands-away pauses auto-speak.
+    this.assembler.updateRest(handsAway, msg.capturedAt)
+    this.cb.onLandmarks?.(msg.hands)
+    if (now - this.lastUi >= 100) {
+      this.lastUi = now; this.emitLetter()
+      this.cb.onStatus?.({ handsPresent: msg.handsPresent, motionEnergy: msg.motionEnergy, isResting: handsAway,
+        fps: this.fps, latencyMs: now - msg.capturedAt, landmarkMs: msg.landmarkMs,
+        inferenceMs: msg.inferenceMs, skippedFrames: this.skipped, backend: this.backend })
+    }
+  }
+  private emitLetter(): void {
+    const p = this.lastLetter
+    this.cb.onFingerspell?.({ letter: p?.label ?? '', prob: p?.prob ?? 0, word: this.word,
+      available: this.ready && this.mode === 'fingerspell',
+      uncertain: !p || p.prob < 0.72 || p.margin < 0.18 || ['J', 'Z', 'nothing'].includes(p.label) })
+  }
+  commitWord(): void { if (this.word) { this.assembler.addGloss(this.word); this.word = ''; this.emitLetter() } }
+  speak(): void { this.commitWord(); this.assembler.speak() }
+  backspace(): void { if (this.word) this.word = this.word.slice(0, -1); else this.assembler.backspace(); this.emitLetter() }
+  clear(): void { this.word = ''; this.assembler.clear(); this.committer.reset(); this.emitLetter() }
+  appendLetter(letter: string): void { if (/^[A-Z]$/.test(letter) && this.mode === 'fingerspell') { this.word += letter.toLowerCase(); this.emitLetter() } }
+  setAutoSpeak(enabled: boolean): void { this.assembler.setAutoSpeak(enabled) }
+  stop(): void {
+    if (this.stopped) return
+    this.stopped = true; this.version++; this.ready = false
+    this.cancelLoad?.(); this.cancelLoad = null
+    if (this.frameHandle !== null) {
+      if (this.usingVideoCallback) this.video.cancelVideoFrameCallback(this.frameHandle)
+      else cancelAnimationFrame(this.frameHandle)
+    }
+    document.removeEventListener('visibilitychange', this.visibilityChanged)
+    this.stream?.getVideoTracks().forEach((t) => t.removeEventListener('ended', this.cameraEnded))
+    this.stream?.getTracks().forEach((t) => t.stop())
+    if (this.video.srcObject === this.stream) this.video.srcObject = null
+    this.stream = null; this.worker?.terminate(); this.worker = null
+    if (active === this) active = null
+    this.cb.onLandmarks?.([]); this.cb.onState?.('idle')
   }
 }
-
-function handleLetterPrediction(letter: string, prob: number): void {
-  emitFingerspell(letter, prob)
-  const committed = letterCommitter?.push(letter, prob)
-  if (!committed) return
-
-  if (committed === 'space') {
-    commitPendingWord()
-  } else if (committed === 'del') {
-    if (currentWord.length > 0) currentWord = currentWord.slice(0, -1)
-    else assembler?.backspace()
-    emitFingerspell(letter, prob)
-  } else {
-    currentWord += committed.toLowerCase()
-    emitFingerspell(letter, prob)
-  }
+export async function startSignPipeline(video: HTMLVideoElement, callbacks: SignPipelineCallbacks,
+  options: SignPipelineOptions = {}): Promise<boolean> {
+  active?.stop(); selectedMode = options.mode ?? selectedMode
+  const pipeline = new Pipeline(video, callbacks, options, selectedMode); active = pipeline
+  return pipeline.start()
 }
+export async function setSignMode(mode: SignMode): Promise<boolean> { selectedMode = mode; return active ? active.switchMode(mode) : true }
+export function getSignMode(): SignMode { return selectedMode }
+export function speakNow(): void { active?.speak() }
+export function commitWord(): void { active?.commitWord() }
+export function backspaceGloss(): void { active?.backspace() }
+export function clearGlossBuffer(): void { active?.clear() }
+export function setAutoSpeak(enabled: boolean): void { active?.setAutoSpeak(enabled) }
+export function stopSignPipeline(): void { active?.stop() }
+export function isSignPipelineRunning(): boolean { return active !== null }
 
-function commitPendingWord(): void {
-  if (currentWord.length === 0) return
-  assembler?.addGloss(currentWord)
-  currentWord = ''
-  emitFingerspell('', 0)
-}
-
-export function setSignMode(newMode: SignMode): void {
-  if (newMode === mode) return
-  mode = newMode
-  letterCommitter?.reset()
-  debouncer?.reset()
-  currentWord = ''
-  worker?.postMessage({ type: 'reset' })
-  emitFingerspell('', 0)
-}
-
-export function getSignMode(): SignMode {
-  return mode
-}
-
-export function isFingerspellAvailable(): boolean {
-  return fsAvailable
-}
-
-export function speakNow(): void {
-  commitPendingWord()
-  assembler?.speak()
-}
-
-export function backspaceGloss(): void {
-  assembler?.backspace()
-}
-
-export function clearGlossBuffer(): void {
-  assembler?.clear()
-}
-
-export function setAutoSpeak(enabled: boolean): void {
-  assembler?.setAutoSpeak(enabled)
-}
-
-export function stopSignPipeline(): void {
-  running = false
-  if (rafHandle !== null) cancelAnimationFrame(rafHandle)
-  rafHandle = null
-  mediaStream?.getTracks().forEach((t) => t.stop())
-  mediaStream = null
-  worker?.terminate()
-  worker = null
-  gate = null
-  debouncer = null
-  assembler = null
-  letterCommitter = null
-  fsCallbacks = null
-  fsAvailable = false
-  currentWord = ''
-  mode = 'signs'
-  closeLandmarker()
-}
-
-export function isSignPipelineRunning(): boolean {
-  return running
-}
-
-export { FRAME_FEATURE_DIM }
+export function appendLetter(letter: string): void { active?.appendLetter(letter) }

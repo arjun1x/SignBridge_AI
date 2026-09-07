@@ -1,4 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from 'electron'
+import { existsSync, statSync } from 'fs'
 import { join, normalize } from 'path'
 import { pathToFileURL } from 'url'
 import { Channels, CaptionEvent } from './ipc/channels'
@@ -41,6 +42,12 @@ function registerAppProtocol(): void {
     const target = normalize(join(rendererRoot, pathname === '/' ? '/index.html' : pathname))
     if (!target.startsWith(rendererRoot)) {
       return new Response('forbidden', { status: 403 })
+    }
+    // A missing file must be an ordinary 404, not a thrown net::ERR_FILE_NOT_FOUND:
+    // the renderer probes for optional assets (e.g. newer model versions) and
+    // expects a non-ok response it can fall through from.
+    if (!existsSync(target) || !statSync(target).isFile()) {
+      return new Response('not found', { status: 404 })
     }
     const res = await net.fetch(pathToFileURL(target).toString())
     const headers = new Headers(res.headers)
