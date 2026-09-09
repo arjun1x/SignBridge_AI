@@ -46,7 +46,9 @@ h3 { font-size:1.125rem; font-weight:600 }
 .hero-title span { background:linear-gradient(110deg,#9bf1d4,#a9c7ff 80%); background-clip:text; color:transparent }
 .hero-sub { max-width:505px; color:var(--text-dim); font-size:1.06rem; line-height:1.8; margin:0 0 30px }
 .hero-actions { display:flex; flex-wrap:wrap; gap:12px }
-.google-mark { font-weight:750; color:#b3cafe }
+.google-btn { background:#fff; color:#1a1a1a; border-color:#fff }
+.google-btn:hover:not(:disabled) { background:#f1f3f6; border-color:#f1f3f6 }
+.google-btn:disabled { background:#e6e9ee; color:#6d7580; border-color:#e6e9ee }
 .signin-note { color:var(--text-faint); font-size:.8125rem; line-height:1.9; margin-top:22px }
 .signin-note > span { margin-right:6px; color:var(--brand) }
 .hand-scene { position:relative; height:560px; min-width:0; background:radial-gradient(ellipse at 50% 55%,#27497b52,transparent 65%); isolation:isolate }

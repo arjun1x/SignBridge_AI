@@ -11,7 +11,7 @@ import { stopSignPipeline } from '../vision/signPipeline'
 export function App() {
   const [checked, setChecked] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [guest, setGuest] = useState(() => localStorage.getItem('signbridge.guest') === '1')
+  const [guest, setGuest] = useState(() => { localStorage.removeItem('signbridge.guest'); return sessionStorage.getItem('signbridge.guest') === '1' })
   const [modelFound, setModelFound] = useState(false)
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -55,7 +55,7 @@ export function App() {
       await window.signbridge.stopCaptions().catch(() => {})
       await window.signbridge.authSignOut().catch(() => {})
     }
-    setRunning(false); localStorage.removeItem('signbridge.guest'); setProfile(null); setGuest(false)
+    setRunning(false); sessionStorage.removeItem('signbridge.guest'); setProfile(null); setGuest(false)
   }
   if (!checked) return <div className="app-loading" role="status"><Logo className="logo" />Opening your studio…</div>
   if (!profile && !guest) return <SignIn onSignedIn={(p) => { setProfile(p); setGuest(!p) }} />
