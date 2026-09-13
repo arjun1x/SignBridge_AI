@@ -1,0 +1,7 @@
+/* Web-only additions on top of the shared desktop stylesheet. */
+.web-blocked main { max-width: 640px; margin: 48px auto }
+.web-reasons { margin: 12px 0 16px; padding-left: 20px; line-height: 1.7 }
+.web-reasons.small { color: var(--text-dim); font-size: .875rem; margin-top: 8px }
+.web-limits { margin: 0 0 18px }
+.topbar .pill { margin-left: auto }
+@media (max-width: 800px) { .topbar .pill { display: none } }

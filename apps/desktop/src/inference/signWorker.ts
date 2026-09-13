@@ -1,3 +1,4 @@
+import { assetUrl } from '../vision/assets'
 import * as ort from 'onnxruntime-web/webgpu'
 import signSpec from '../../../../shared/feature_spec.json?raw'
 import handSpec from '../../../../shared/fingerspell_spec.json?raw'
@@ -10,8 +11,8 @@ import { FrameWindow } from './frameWindow'
 import type { Prediction, SignMode, WorkerReply, WorkerRequest } from './protocol'
 
 ort.env.wasm.wasmPaths = {
-  mjs: new URL('/ort/ort-wasm-simd-threaded.jsep.mjs', self.location.href).href,
-  wasm: new URL('/ort/ort-wasm-simd-threaded.jsep.wasm', self.location.href).href
+  mjs: assetUrl('/ort/ort-wasm-simd-threaded.jsep.mjs'),
+  wasm: assetUrl('/ort/ort-wasm-simd-threaded.jsep.wasm')
 }
 ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 1) : 1
 let session: ort.InferenceSession | null = null

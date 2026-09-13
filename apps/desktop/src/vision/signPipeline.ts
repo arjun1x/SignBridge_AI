@@ -1,3 +1,4 @@
+import { assetUrl } from './assets'
 import { GlossDebouncer, DEFAULT_DEBOUNCE, type DebounceConfig } from '../inference/debounce'
 import { LetterCommitter } from '../inference/letterCommitter'
 import { SentenceAssembler } from '../nlp/sentenceAssembler'
@@ -33,14 +34,14 @@ let selectedMode: SignMode = 'fingerspell'
 async function resolveModel(mode: SignMode): Promise<{ base: string; labelsUrl: string }> {
   const names = mode === 'fingerspell' ? ['fingerspell_v2', 'fingerspell_v1'] : ['signs_v2', 'signs_v1']
   for (const name of names) {
-    const response = await fetch(`/models/${name}.meta.json`).catch(() => null)
+    const response = await fetch(assetUrl(`/models/${name}.meta.json`)).catch(() => null)
     if (!response?.ok) continue
     let meta: Record<string, unknown>
     try { meta = await response.json() } catch { continue } // dev-server HTML fallback is not metadata
     if (meta.val_acc == null) continue
     const labelFile = typeof meta.labels_file === 'string' && /^[\w.-]+\.json$/.test(meta.labels_file)
       ? meta.labels_file : mode === 'fingerspell' ? 'labels_fingerspell.json' : 'labels.json'
-    return { base: `/models/${name}`, labelsUrl: `/models/${labelFile}` }
+    return { base: assetUrl(`/models/${name}`), labelsUrl: assetUrl(`/models/${labelFile}`) }
   }
   throw new Error(`The ${mode === 'fingerspell' ? 'fingerspelling' : 'sign'} model is not installed. Sync a trained ONNX model using the setup guide, then try again.`)
 }

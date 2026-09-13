@@ -1,0 +1,26 @@
+# Served by Cloudflare Pages / Netlify (Vercel users: vercel.json). %ASSET_ORIGIN% is
+# filled in at build time from VITE_ASSET_BASE (empty when assets are same-origin).
+# The two Cross-Origin-* headers make the page cross-origin isolated, which
+# onnxruntime-web needs for multi-threaded wasm. Everything else is hardening.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), display-capture=(self), geolocation=(), payment=(), usb=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'%ASSET_ORIGIN%; worker-src 'self' blob:; connect-src 'self'%ASSET_ORIGIN%; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+
+# Hashed bundles never change content under the same name.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Runtime assets are large and change rarely; revalidate daily.
+/ort/*
+  Cache-Control: public, max-age=86400
+/mediapipe/*
+  Cache-Control: public, max-age=86400
+/models/*
+  Cache-Control: public, max-age=86400

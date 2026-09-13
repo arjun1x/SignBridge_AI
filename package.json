@@ -11,14 +11,17 @@
   },
   "scripts": {
     "dev": "npm run dev -w apps/desktop",
+    "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/desktop",
+    "build:web": "npm run build -w apps/web",
     "download:stt": "node scripts/download-stt-model.mjs",
     "download:tts": "node scripts/download-tts-model.mjs",
     "download:mediapipe": "node scripts/download-mediapipe-model.mjs",
     "postinstall": "node scripts/copy-ort-assets.mjs",
     "typecheck": "tsc --noEmit -p apps/desktop/tsconfig.json",
+    "typecheck:web": "tsc --noEmit -p apps/web/tsconfig.json",
     "test:runtime": "node --test tests/*.test.mjs",
-    "check": "npm run typecheck && npm run test:runtime && npm run build"
+    "check": "npm run typecheck && npm run typecheck:web && npm run test:runtime && npm run build && npm run build:web"
   },
   "devDependencies": {
     "png-to-ico": "^3.0.1",

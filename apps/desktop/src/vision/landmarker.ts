@@ -1,4 +1,5 @@
 // Runs in the recognition worker. Letter mode never runs face/pose models.
+import { assetUrl } from './assets'
 import { HandLandmarker, HolisticLandmarker } from '@mediapipe/tasks-vision'
 import type { HolisticLandmarkerResult } from '@mediapipe/tasks-vision'
 import type { LandmarkFrame } from './features'
@@ -15,12 +16,12 @@ export function toLandmarkFrame(result: HolisticLandmarkerResult): LandmarkFrame
 }
 export interface Detector { backend: string; detect(image: ImageBitmap, timestamp: number): LandmarkFrame; close(): void }
 export async function createLandmarker(mode: SignMode): Promise<Detector> {
-  const loaderUrl = new URL('/mediapipe/vision_wasm_module_internal.js', self.location.href).href
+  const loaderUrl = assetUrl('/mediapipe/vision_wasm_module_internal.js')
   const files = { wasmLoaderPath: loaderUrl,
-    wasmBinaryPath: new URL('/mediapipe/vision_wasm_module_internal.wasm', self.location.href).href }
+    wasmBinaryPath: assetUrl('/mediapipe/vision_wasm_module_internal.wasm') }
   const { default: factory } = await import(/* @vite-ignore */ loaderUrl)
   const scope = self as unknown as { ModuleFactory?: unknown; Module?: unknown }
-  const path = `/mediapipe/${mode === 'fingerspell' ? 'hand' : 'holistic'}_landmarker.task`
+  const path = assetUrl(`/mediapipe/${mode === 'fingerspell' ? 'hand' : 'holistic'}_landmarker.task`)
   const failures: string[] = []
   for (const delegate of ['GPU', 'CPU'] as const) {
     try {
