@@ -34,3 +34,15 @@ apps/desktop/release/
 
 # Google OAuth client credentials (per-user, never committed)
 apps/desktop/resources/google-oauth.json
+
+# Local configuration and secrets (see .env.example)
+.env
+.env.*
+!.env.example
+apps/web/.env
+apps/web/.env.*
+apps/desktop/.env
+apps/desktop/.env.*
+
+# Local test artefacts
+.playwright-mcp/

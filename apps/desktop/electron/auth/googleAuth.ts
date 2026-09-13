@@ -71,6 +71,9 @@ const PREFERRED_PORT = 51739
 export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfile> {
   const verifier = b64url(randomBytes(32))
   const challenge = b64url(createHash('sha256').update(verifier).digest())
+  // Anti-CSRF: the loopback callback is reachable by any local process, so a
+  // redirect that does not echo our state is ignored rather than exchanged.
+  const state = b64url(randomBytes(16))
 
   // Loopback server receives the redirect.
   const { code, redirectUri } = await new Promise<{ code: string; redirectUri: string }>(
@@ -79,6 +82,10 @@ export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfi
         const url = new URL(req.url ?? '/', 'http://127.0.0.1')
         if (!url.pathname.startsWith('/callback')) {
           res.writeHead(404).end()
+          return
+        }
+        if (url.searchParams.get('state') !== state) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' }).end('invalid state')
           return
         }
         const authCode = url.searchParams.get('code')
@@ -113,6 +120,7 @@ export async function signInWithGoogle(config: OAuthConfig): Promise<GoogleProfi
         auth.searchParams.set('scope', 'openid email profile')
         auth.searchParams.set('code_challenge', challenge)
         auth.searchParams.set('code_challenge_method', 'S256')
+        auth.searchParams.set('state', state)
         shell.openExternal(auth.toString())
       })
       server.listen(PREFERRED_PORT, '127.0.0.1')

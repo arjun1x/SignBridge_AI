@@ -34,6 +34,41 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
+// Packaged renderer CSP (the dev server needs inline scripts/websockets for
+// HMR, so it is applied to app:// only). Mirrors apps/web/static/_headers:
+// wasm needs 'wasm-unsafe-eval', the recognition worker and Piper playback use
+// blob: URLs, React sets inline style attributes.
+const RENDERER_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "worker-src 'self' blob:",
+  "connect-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+  "frame-ancestors 'none'"
+].join('; ')
+
+// The renderer only ever loads its own bundle. Anything else (a link in a
+// caption, a dragged-in file, window.open) is refused rather than rendered
+// with the app's privileges.
+function isOwnUrl(url: string): boolean {
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  return url.startsWith('app://bundle/') || Boolean(devUrl && url.startsWith(devUrl))
+}
+
+function lockDownNavigation(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isOwnUrl(url)) event.preventDefault()
+  })
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault())
+}
+
 function registerAppProtocol(): void {
   const rendererRoot = join(__dirname, '../renderer')
   protocol.handle('app', async (request) => {
@@ -53,6 +88,8 @@ function registerAppProtocol(): void {
     const headers = new Headers(res.headers)
     headers.set('Cross-Origin-Opener-Policy', 'same-origin')
     headers.set('Cross-Origin-Embedder-Policy', 'require-corp')
+    headers.set('X-Content-Type-Options', 'nosniff')
+    if (target.endsWith('.html')) headers.set('Content-Security-Policy', RENDERER_CSP)
     return new Response(res.body, { status: res.status, headers })
   })
 }
@@ -70,8 +107,22 @@ app.whenReady().then(() => {
     { useSystemPicker: false }
   )
 
+  // Only the permissions the app actually uses: camera (sign recognition),
+  // microphone probing / output-device labels (call setup), system-audio
+  // capture (captions) and output-device selection (voice into the call).
+  // Everything else (notifications, geolocation, MIDI, clipboard, ...) is denied.
+  const allowedPermissions = new Set(['media', 'display-capture', 'speaker-selection'])
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(allowedPermissions.has(permission) && isOwnUrl(webContents.getURL()))
+  })
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, origin) => {
+    return allowedPermissions.has(permission) && (webContents ? isOwnUrl(webContents.getURL()) : isOwnUrl(origin))
+  })
+
   mainWindow = createMainWindow()
   overlayWindow = createOverlayWindow()
+  lockDownNavigation(mainWindow)
+  lockDownNavigation(overlayWindow)
 
   // Load the routable TTS voice (Piper via sherpa) if it's been downloaded.
   const ttsModelDir = findTtsModel(resourcesDir)
